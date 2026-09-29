@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NETWORK_TESTNET } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
-import { createMockPair, viewOnly, type MockPair } from "@byte-protocol/wallet";
+import { MockWallet, createMockPair, viewOnly, type MockPair } from "@byte-protocol/wallet";
+import { BytePayer } from "@byte-protocol/client";
 import { ByteFacilitator } from "./facilitator.js";
 import { API_KEY_HEADER, createFacilitatorHandler } from "./http.js";
 
@@ -211,5 +212,116 @@ describe("invoices and verification", () => {
 
   it("ignores a trailing slash", async () => {
     expect((await h.handle(request("GET", "/info/"))).status).toBe(200);
+  });
+});
+
+describe("a facilitator that charges a fee", () => {
+  /** Payee, payer and the facilitator's own fee wallet, on one shared chain. */
+  function chargingHarness(fee = { bps: 100 }) {
+    const pair = createMockPair(NETWORK_TESTNET);
+    pair.fundPayer("1000000000");
+    const feeWallet = new MockWallet({
+      network: NETWORK_TESTNET,
+      chain: pair.chain,
+      addressPrefix: "utest1facil",
+    });
+    const store = new MemoryInvoiceStore();
+    const facilitator = new ByteFacilitator({
+      wallet: viewOnly(pair.payee),
+      store,
+      secret: SECRET,
+      apiKey: API_KEY,
+      fee: { ...fee, payTo: feeWallet.fundingAddress },
+      feeWallet: viewOnly(feeWallet),
+    });
+    return { pair, feeWallet, store, facilitator };
+  }
+
+  it("publishes its terms, so a merchant sees them before delegating", () => {
+    const h = chargingHarness({ bps: 150 });
+    expect(h.facilitator.info().fee).toMatchObject({ bps: 150 });
+  });
+
+  it("publishes null when it charges nothing", () => {
+    expect(harness().facilitator.info().fee).toBeNull();
+  });
+
+  it("issues invoices with the fee output and settles them through the real payer", async () => {
+    // Through BytePayer, not hand-credited: the previous version of the fee tests did the
+    // latter and proved the verifier while hiding that nothing could pay a fee invoice.
+    const h = chargingHarness();
+    const invoice = await h.facilitator.issue("10000000");
+    expect(invoice.fee).toMatchObject({ amount: "100000", bps: 100 });
+
+    const { txid } = await new BytePayer({ wallet: h.pair.payer }).pay(invoice, "https://x.test");
+    h.pair.chain.mine(1);
+
+    const result = await h.facilitator.verify({ invoiceId: invoice.invoiceId, txid });
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a payment that skipped the fee", async () => {
+    const h = chargingHarness();
+    const invoice = await h.facilitator.issue("10000000");
+
+    const { txid } = await h.pair.payer.send({
+      to: invoice.payTo,
+      amountZat: invoice.amount,
+      memo: invoice.memo,
+    });
+    h.pair.chain.mine(1);
+
+    const result = await h.facilitator.verify({ invoiceId: invoice.invoiceId, txid });
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.reason).toBe("underpaid");
+  });
+
+  it("refuses to charge a fee it could not see arriving", () => {
+    // A facilitator that charged without a wallet for its fee address would refuse
+    // nothing and collect nothing, and learn of it only when revenue read zero.
+    const pair = createMockPair(NETWORK_TESTNET);
+    expect(
+      () =>
+        new ByteFacilitator({
+          wallet: viewOnly(pair.payee),
+          store: new MemoryInvoiceStore(),
+          secret: SECRET,
+          apiKey: API_KEY,
+          fee: { bps: 100, payTo: "utest1facil" },
+        }),
+    ).toThrow(/needs a feeWallet/);
+  });
+
+  it("refuses a spending wallet as the fee wallet", () => {
+    // The whole security argument for a facilitator is that compromising it cannot move
+    // funds. A spendable feeWallet would quietly void that.
+    const pair = createMockPair(NETWORK_TESTNET);
+    expect(
+      () =>
+        new ByteFacilitator({
+          wallet: viewOnly(pair.payee),
+          store: new MemoryInvoiceStore(),
+          secret: SECRET,
+          apiKey: API_KEY,
+          fee: { bps: 100, payTo: "utest1facil" },
+          feeWallet: pair.payer,
+        }),
+    ).toThrow(/feeWallet must be view-only/);
+  });
+
+  it("refuses impossible terms at construction", () => {
+    const pair = createMockPair(NETWORK_TESTNET);
+    expect(
+      () =>
+        new ByteFacilitator({
+          wallet: viewOnly(pair.payee),
+          store: new MemoryInvoiceStore(),
+          secret: SECRET,
+          apiKey: API_KEY,
+          fee: { bps: 50_000, payTo: "utest1facil" },
+          feeWallet: viewOnly(pair.payee),
+        }),
+    ).toThrow(/over 100%/);
   });
 });
