@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**365 tests pass**: 309 TypeScript, 56 Rust.
+**389 tests pass**: 333 TypeScript, 56 Rust.
 
 ---
 
@@ -129,11 +129,13 @@ Implemented and tested:
 | `@byte-protocol/adapter-mcp` | Gate an MCP tool behind an invoice; settle one from the client |
 | `@byte-protocol/adapter-a2a-ap2` | Byte as an AP2 payment method, carried over A2A |
 | `@byte-protocol/adapter-langchain` | LangChain tools: fetch paid resources, check balance, review spending |
+| `@byte-protocol/rails` | The funding rail interface; every rail must declare whether its Zcash leg is public |
+| `@byte-protocol/rail-near-intents` | Fund from another chain via NEAR Intents, dry-run. **The Zcash leg is transparent and public.** |
 | `crates/byte-walletd` | The Rust sidecar on librustzcash: addresses, sync, send, verify |
 
-**Planned, and not claimed to work:** a Redis store; the NEAR Intents funding rail; the
-owner-only JSON API and its console. Nothing above is listed as supported without code and a
-passing test behind it.
+**Planned, and not claimed to work:** a Redis store; the owner-only JSON API and its console;
+every other funding rail, each named with its reason in [RAILS.md](docs/RAILS.md). Nothing
+above is listed as supported without code and a passing test behind it.
 
 ---
 
@@ -190,6 +192,16 @@ pnpm test
 That runs the whole suite against the mock wallet, including the full 402 loop over a real HTTP
 server. No chain, no funds, no configuration.
 
+To watch the protocol run instead of reading about it:
+
+```bash
+pnpm demo
+```
+
+A buyer agent pays a seller agent for a report, then the demo shows the parts that usually go
+unshown: the pool the payment landed in, a replay being refused, and a spend guard stopping a
+payment before any value moves.
+
 For the sidecar and a real testnet payment, see
 [crates/byte-walletd/.env.example](crates/byte-walletd/.env.example) and
 [docs/TESTNET_RUNS.md](docs/TESTNET_RUNS.md).
@@ -205,6 +217,7 @@ For the sidecar and a real testnet payment, see
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Why the seams are where they are |
 | [TOOLCHAIN.md](docs/TOOLCHAIN.md) | Every version and protocol fact, with its source and date |
 | [DECISIONS.md](docs/DECISIONS.md) | What was chosen and why |
+| [RAILS.md](docs/RAILS.md) | How value gets in, and what each route exposes |
 | [TESTNET_RUNS.md](docs/TESTNET_RUNS.md) | Real transactions, logged |
 
 ---
