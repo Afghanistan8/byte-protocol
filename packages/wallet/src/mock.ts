@@ -65,6 +65,15 @@ export interface PayIntoOptions {
    * second chain.
    */
   pool?: Pool;
+  /**
+   * Add this output to an existing transaction instead of minting a new one.
+   *
+   * A real Zcash transaction has several outputs, and Byte depends on that: an invoice's
+   * payment and a facilitator's fee are two outputs of *one* transaction, which is what
+   * makes them atomic. Without this the mock could only ever model one output per
+   * transaction, and every multi-output property would go untested.
+   */
+  txid?: string;
 }
 
 /**
@@ -126,7 +135,7 @@ export class MockChain {
    */
   payInto(options: PayIntoOptions): string {
     const value = parseZat(options.amountZat);
-    const txid = this.#nextTxid(options.payTo, value, options.memo);
+    const txid = options.txid ?? this.#nextTxid(options.payTo, value, options.memo);
     const note: MockNote = {
       txid,
       pool: options.pool ?? BYTE_POOL,

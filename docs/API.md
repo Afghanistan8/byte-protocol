@@ -34,6 +34,36 @@ in the `PAYMENT-REQUIRED` header and repeated in the body under `accepts`.
 `payTo` is minted for this invoice and no other. `amount` is zatoshis as a string, never a
 JSON number.
 
+#### Optional fields
+
+**`price`** — present when the merchant priced in USD:
+
+```json
+"price": { "priceUsd": "2.00", "zecUsd": 231.5, "priceSource": "near-intents+kraken",
+           "quotedAt": "2026-09-29T12:00:00Z" }
+```
+
+The quote is locked at issue time and never consulted again; a payment is judged against
+`amount` alone. Settlement is in ZEC, and both sides carry price risk between the quote and
+cashing out.
+
+**`fee`** — present when the issuing facilitator charges:
+
+```json
+"fee": { "amount": "1000", "payTo": "utest1facil…", "bps": 100 }
+```
+
+`amount` above stays what the **payee** is owed; the fee is a second output, and `zip321`
+encodes both in the indexed multi-payment form. The fee leg carries no memo — it binds to
+no invoice, and a memo there would be a second place an invoice identifier could reach a
+third party.
+
+**The fee is enforced by the facilitator's verification, not by the chain.** Zcash has no
+contracts and nothing on-chain requires that output to exist. The facilitator checks both
+outputs arrived before it approves; a payer who bypasses the facilitator bypasses the fee.
+A payment that settles the payee but skips the fee is refused as `underpaid` **without
+consuming the invoice**, so the payer can still pay correctly.
+
 ### The retry
 
 The payer settles, then retries with `PAYMENT-SIGNATURE`: base64 of

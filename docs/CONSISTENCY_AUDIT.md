@@ -76,9 +76,11 @@ named a third-party project for no benefit to a reader. Rewritten without it.
 - **"Orchard" appears 5 times in docs.** Every one is legitimate: the `wrong_pool_source`
   refusal path (SPEC §8, README), the ZIP 316 typecode registry (TOOLCHAIN ×2), and the
   `orchard` crate's own name. **Nowhere is Orchard described as a pool Byte uses.**
-- **Fee statements agree.** README says "Byte charges nothing… no protocol fee, no fee output
-  and no treasury address"; DECISIONS #6 records the same; RAILS states NEAR's 0.25% is
-  theirs and passed through. No fee output exists in the code.
+- **Fee statements agree.** README, DECISIONS #6 and #6b, API.md and `core/src/fee.ts`
+  all say the same two things in the same words: Byte's protocol fee is zero, and the
+  optional facilitator fee is enforced by the facilitator's verification rather than by
+  the chain. None of them says "free". RAILS states NEAR's 0.25% is theirs and passed
+  through, and that no rail charges or collects the facilitator fee.
 - **Test counts are real.** 352 TypeScript from `vitest run`, 56 Rust from `cargo test`. The
   README's 408 is their sum. No badge hardcodes a count.
 - **Every package named in the README exists.** All 14 resolve to a real `package.json`.

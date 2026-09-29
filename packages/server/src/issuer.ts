@@ -10,7 +10,9 @@
 
 import {
   BYTE_SCHEME,
-  buildZip321,
+  assertValidFee,
+  buildZip321Multi,
+  feeZatFor,
   encodeMemo,
   isUsd,
   isZat,
@@ -20,6 +22,8 @@ import {
   ByteProtocolError,
   type BytePaymentRequirements,
   type ByteNetwork,
+  type FacilitatorFee,
+  type FeeOutput,
   type InvoiceStore,
   type PriceQuote,
   type PriceSource,
@@ -59,6 +63,14 @@ export interface IssuerOptions {
    * neither.
    */
   priceSource?: PriceSource;
+  /**
+   * Charge a facilitator fee, as a second output.
+   *
+   * **Off by default, and enforced by verification rather than by the chain.** A payer
+   * who bypasses the facilitator bypasses the fee; Zcash has no contracts and Byte does
+   * not pretend otherwise. See `core/src/fee.ts`.
+   */
+  facilitatorFee?: FacilitatorFee;
   /** Injectable clock, for tests. */
   now?: () => number;
 }
@@ -73,6 +85,7 @@ export class InvoiceIssuer {
   readonly #minConfirmations: number;
   readonly #facilitator: string | undefined;
   readonly #priceSource: PriceSource | undefined;
+  readonly #facilitatorFee: FacilitatorFee | undefined;
   readonly #now: () => number;
 
   constructor(options: IssuerOptions) {
@@ -94,7 +107,13 @@ export class InvoiceIssuer {
     this.#ttlMs = ttlMs;
     this.#minConfirmations = minConfirmations;
     this.#facilitator = options.facilitator;
+    if (options.facilitatorFee !== undefined) {
+      // Fail here rather than on a live invoice: a misconfigured fee that only shows up
+      // when a payer is waiting is a fee nobody tested.
+      assertValidFee(options.facilitatorFee);
+    }
     this.#priceSource = options.priceSource;
+    this.#facilitatorFee = options.facilitatorFee;
     this.#now = options.now ?? Date.now;
   }
 
@@ -126,6 +145,10 @@ export class InvoiceIssuer {
     const payTo = await this.#wallet.newInvoiceAddress();
     const memo = encodeMemo(this.#secret, { invoiceId, amountZat, payTo });
 
+    // The fee is a separate output. `amountZat` stays what the payee is owed, so a
+    // payee's accounting never has to subtract someone else's fee out of its revenue.
+    const fee = this.#feeFor(amountZat);
+
     const createdAt = this.#now();
     const expiresAt = createdAt + this.#ttlMs;
 
@@ -140,6 +163,7 @@ export class InvoiceIssuer {
       createdAt,
       ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
       ...(options.price !== undefined ? { price: options.price } : {}),
+      ...(fee !== undefined ? { fee } : {}),
     };
 
     await this.#store.put(stored);
@@ -154,10 +178,28 @@ export class InvoiceIssuer {
       expiresAt: new Date(expiresAt).toISOString(),
       minConfirmations: this.#minConfirmations,
       memo,
-      zip321: buildZip321({ address: payTo, amountZat, memo }),
+      zip321: buildZip321Multi([
+        { address: payTo, amountZat, memo },
+        // The fee leg carries no memo: it binds to nothing, and a memo on it would be a
+        // second place an invoice identifier could leak to a third party.
+        ...(fee !== undefined ? [{ address: fee.payTo, amountZat: fee.amount }] : []),
+      ]),
       ...(this.#facilitator !== undefined ? { facilitator: this.#facilitator } : {}),
       ...(options.price !== undefined ? { price: options.price } : {}),
+      ...(fee !== undefined ? { fee } : {}),
     };
+  }
+
+  /** The fee output for an invoice of `amountZat`, or nothing when it comes to zero. */
+  #feeFor(amountZat: string): FeeOutput | undefined {
+    if (this.#facilitatorFee === undefined) return undefined;
+
+    const amount = feeZatFor(amountZat, this.#facilitatorFee);
+    // A zero fee means no second output. Encoding a zero-value output would ask the payer
+    // to pay a ZIP 317 action fee for something nobody can spend.
+    if (amount === "0") return undefined;
+
+    return { amount, payTo: this.#facilitatorFee.payTo, bps: this.#facilitatorFee.bps };
   }
 
   /**

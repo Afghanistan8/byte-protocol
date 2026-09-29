@@ -57,6 +57,26 @@ export const PriceQuoteSchema = z.object({
 
 export type PriceQuote = z.infer<typeof PriceQuoteSchema>;
 
+/**
+ * A second output paying the facilitator.
+ *
+ * Present only when the issuing facilitator charges. Carried on the wire so a payer can
+ * see exactly what it is being asked to pay and to whom, and refuse terms it does not
+ * like, rather than discovering a second output while parsing the ZIP-321 URI.
+ *
+ * Enforced by the facilitator's verification, never by the chain. See `core/src/fee.ts`.
+ */
+export const FeeOutputSchema = z.object({
+  /** Zatoshis. */
+  amount: zatoshis,
+  /** Where it goes. A facilitator's own address, never an invoice address. */
+  payTo: z.string().min(1),
+  /** The terms it was computed from, so a payer can check the arithmetic. */
+  bps: z.int().min(0).max(10_000),
+});
+
+export type FeeOutput = z.infer<typeof FeeOutputSchema>;
+
 /** The payment requirements a payee sends with a 402. */
 export const BytePaymentRequirementsSchema = z.object({
   scheme: z.literal(BYTE_SCHEME),
@@ -85,6 +105,14 @@ export const BytePaymentRequirementsSchema = z.object({
   facilitator: z.url().optional(),
   /** Present only when the merchant priced in USD. */
   price: PriceQuoteSchema.optional(),
+  /**
+   * A second output paying the facilitator, when one charges.
+   *
+   * `amount` above remains what the **payee** is owed. The payer sends both, and the
+   * ZIP-321 URI encodes both. Keeping them separate means a payee's accounting never has
+   * to subtract someone else's fee out of its own revenue.
+   */
+  fee: FeeOutputSchema.optional(),
 });
 
 export type BytePaymentRequirements = z.infer<typeof BytePaymentRequirementsSchema>;
@@ -127,6 +155,8 @@ export interface StoredInvoice {
    * whatever the rate is now.
    */
   price?: PriceQuote;
+  /** The facilitator fee this invoice was issued with, when there was one. */
+  fee?: FeeOutput;
   /** Opaque, caller-defined. Byte neither inspects nor transmits this. */
   metadata?: Record<string, unknown>;
 }

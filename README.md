@@ -174,10 +174,28 @@ Three decisions where the obvious implementation is wrong:
 
 ## Fees
 
-**Byte charges nothing.** There is no protocol fee, no fee output and no treasury address.
+**Byte's protocol fee is zero.** No fee output, no treasury address, nothing of mine in any
+transaction. Not "free" — the Zcash network fee still applies, and it goes to miners.
+The testnet run above paid 10,000 zatoshis under ZIP 317.
 
-The only cost is the Zcash network fee, which goes to miners, not to me. The testnet run above
-paid 10,000 zatoshis under ZIP 317.
+### The one fee that exists, and what enforces it
+
+A facilitator verifies payments on a payee's behalf, and some will want to be paid for it.
+So an invoice **may** carry a second output paying the facilitator, encoded in the same
+ZIP-321 request. It is off by default.
+
+I want to be exact about what holds it up, because this is where most projects overclaim:
+
+> **The fee is enforced by the facilitator's verification, not by the chain.**
+
+Zcash has no contracts. Nothing on-chain requires that second output to exist. What
+actually happens is that the facilitator issues an invoice with two outputs, the payer
+pays both because the request says to, and the facilitator checks both arrived before it
+tells the payee to serve. **A payer who skips the facilitator — pays the payee directly and
+asks the payee to verify — skips the fee.**
+
+That is not a hole I have left open. It is what having no contracts means. Anyone
+advertising an on-chain-enforced fee on Zcash is describing something that does not exist.
 
 ---
 

@@ -9,6 +9,7 @@
 export * from "./amount.js";
 export * from "./bytes.js";
 export * from "./errors.js";
+export * from "./fee.js";
 export * from "./ids.js";
 export * from "./invoice.js";
 export * from "./memo.js";

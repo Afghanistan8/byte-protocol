@@ -80,7 +80,12 @@ statuses, the shape of the quote request body, and the failure paths.
 ### Fees
 
 NEAR Intents charges an extra **0.25%** when no JWT is supplied. That fee is **theirs, not
-Byte's** — Byte charges nothing, on any path — and it is passed through unchanged.
+Byte's**, and it is passed through unchanged rather than folded into anything.
+
+Byte's own protocol fee is zero on every path. The one Byte-side fee that can exist is
+the optional facilitator fee — off by default, a second ZIP-321 output, enforced by the
+facilitator's verification rather than by the chain. It has nothing to do with rails: no
+rail charges it and no rail collects it.
 
 ### Statuses
 

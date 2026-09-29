@@ -27,6 +27,18 @@ export interface VerifierOptions {
   wallet: ViewOnlyWallet;
   store: InvoiceStore;
   secret: Uint8Array;
+  /**
+   * A wallet that can see the fee address, when this verifier charges a fee.
+   *
+   * Separate from `wallet` because they are genuinely different keys: `wallet` holds the
+   * *payee's* viewing key, and the fee is paid to the *facilitator's* own address. A
+   * facilitator verifying for a merchant can see the merchant's invoice outputs and its
+   * own fee output, and those are two viewing keys, not one.
+   *
+   * Without it, a configured fee cannot be checked, and the verifier says so rather than
+   * waving the payment through.
+   */
+  feeWallet?: ViewOnlyWallet;
   now?: () => number;
 }
 
@@ -72,12 +84,14 @@ export class PaymentVerifier {
   readonly #wallet: ViewOnlyWallet;
   readonly #store: InvoiceStore;
   readonly #secret: Uint8Array;
+  readonly #feeWallet: ViewOnlyWallet | undefined;
   readonly #now: () => number;
 
   constructor(options: VerifierOptions) {
     this.#wallet = options.wallet;
     this.#store = options.store;
     this.#secret = options.secret;
+    this.#feeWallet = options.feeWallet;
     this.#now = options.now ?? Date.now;
   }
 
@@ -161,6 +175,18 @@ export class PaymentVerifier {
       );
     }
 
+    // The fee, when this invoice carried one.
+    //
+    // Checked *after* the payee's output and *before* consuming, so a payment that settled
+    // the payee but skipped the fee is refused without burning the invoice — the payer can
+    // still pay correctly. Nothing on-chain requires the fee output to exist; this check is
+    // the only thing that does, which is exactly what "enforced by the facilitator, not by
+    // the chain" means.
+    if (invoice.fee !== undefined) {
+      const feeFailure = await this.#checkFee(invoice, txid);
+      if (feeFailure !== undefined) return feeFailure;
+    }
+
     // Consume before reporting success. Doing it after — or checking here and writing
     // later — leaves a window in which two concurrent claims both pass and both get
     // served for one payment.
@@ -171,6 +197,53 @@ export class PaymentVerifier {
 
     const settled = await this.#store.get(invoice.invoiceId);
     return { ok: true, invoice: settled ?? invoice, note: settling, txid };
+  }
+
+  /**
+   * Check that the fee output arrived, in the same transaction.
+   *
+   * Same transaction, not merely "somewhere": a fee paid separately could be paid once and
+   * pointed at by many invoices. Atomicity here is free, because Zcash gives it — the
+   * payee's output and the fee output are in one transaction or neither is.
+   */
+  async #checkFee(
+    invoice: StoredInvoice,
+    txid: string,
+  ): Promise<VerificationFailure | undefined> {
+    const fee = invoice.fee;
+    if (fee === undefined) return undefined;
+
+    if (this.#feeWallet === undefined) {
+      // Say so rather than passing. A facilitator that cannot see its own fee address has
+      // been misconfigured, and waving payments through is the wrong way to find out.
+      return fail(
+        "invalid_payment",
+        "this invoice carries a facilitator fee, but the verifier has no viewing key for " +
+          "the fee address and therefore cannot confirm the fee was paid",
+      );
+    }
+
+    const feeOutputs = await this.#feeWallet.findOutputs(txid);
+
+    // Sum, rather than looking for one matching output. A wallet may report the fee split
+    // across notes, and a payer that overpaid the fee has not underpaid it.
+    const owed = parseZat(fee.amount);
+    const paid = feeOutputs
+      .filter((note) => isAcceptedPool(note.pool))
+      .filter((note) => note.payTo === undefined || timingSafeEqual(note.payTo, fee.payTo))
+      .reduce((sum, note) => sum + parseZat(note.valueZat), 0n);
+
+    if (paid < owed) {
+      return fail(
+        "underpaid",
+        `the payee's output is correct, but the facilitator fee is short: ${paid} of ` +
+          `${owed} zatoshis. The invoice is still open — pay both outputs of the ZIP-321 ` +
+          `request.`,
+        { shortfallZat: (owed - paid).toString(10) },
+      );
+    }
+
+    return undefined;
   }
 
   /**
