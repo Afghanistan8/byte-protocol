@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
+use crate::chain::{LightwalletdChain, SendOutcome};
 use crate::keys::{DiversifierCursor, KeyError, Network, SpendingKeys, ViewingKeys};
 
 #[derive(Debug, thiserror::Error)]
@@ -29,6 +30,10 @@ pub enum WalletStateError {
     Key(#[from] KeyError),
     #[error("could not reach the chain data source: {0}")]
     ChainAccess(String),
+    #[error("this wallet is not connected to a chain, so it cannot send")]
+    NoChain,
+    #[error("{0}")]
+    Send(String),
 }
 
 /// An output received by this wallet, as reported to the TypeScript side.
@@ -127,6 +132,9 @@ pub struct WalletState {
     viewing: ViewingKeys,
     cursor: Mutex<DiversifierCursor>,
     chain: Arc<dyn ChainData>,
+    /// Present only when this process both holds a spending key and is connected to a
+    /// chain. Sending requires both, and the type says so.
+    sender: Option<Arc<LightwalletdChain>>,
 }
 
 impl WalletState {
@@ -145,6 +153,7 @@ impl WalletState {
             viewing,
             cursor: Mutex::new(DiversifierCursor::default()),
             chain,
+            sender: None,
         })
     }
 
@@ -163,7 +172,33 @@ impl WalletState {
             viewing: ViewingKeys::decode(network, ufvk)?,
             cursor: Mutex::new(DiversifierCursor::default()),
             chain,
+            sender: None,
         })
+    }
+
+    /// Attach the chain this wallet sends through.
+    pub fn with_sender(mut self, sender: Arc<LightwalletdChain>) -> Self {
+        self.sender = Some(sender);
+        self
+    }
+
+    /// Build, prove and broadcast a shielded Ironwood payment.
+    ///
+    /// Requires both a spending key and a chain connection. A view-only deployment fails
+    /// with `ViewOnly` and never reaches the builder.
+    pub async fn send(
+        &self,
+        to: &str,
+        amount_zat: u64,
+        memo: &str,
+    ) -> Result<SendOutcome, WalletStateError> {
+        let keys = self.spending.as_ref().ok_or(WalletStateError::ViewOnly)?;
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        let usk = keys.usk()?;
+        sender
+            .send(&usk, to, amount_zat, memo)
+            .await
+            .map_err(|e| WalletStateError::Send(e.to_string()))
     }
 
     pub fn network(&self) -> Network {

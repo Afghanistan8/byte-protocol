@@ -42,6 +42,11 @@ zcash_primitives = "0.30.1"
 zip321 = "0.9.0"
 orchard = "0.15.5"
 zip32 = "0.2"
+# Sapling proving parameters. `create_proposed_transactions` requires a Sapling
+# SpendProver and OutputProver in its signature even for an Ironwood-only transfer, so a
+# real prover has to exist. `download-params` fetches them once into the standard
+# location; `local-prover` finds them there afterwards.
+zcash_proofs = { version = "0.30.0", features = ["local-prover", "download-params"] }
 
 # Service
 axum = "0.8.9"

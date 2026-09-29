@@ -85,6 +85,7 @@ async fn main() -> anyhow::Result<()> {
     let wallet = match (&secrets.seed, &secrets.ufvk) {
         (Some(seed), _) => {
             WalletState::from_seed(network, seed.clone(), config.account, chain.clone())?
+                .with_sender(chain.clone())
         }
         (None, Some(encoded)) => WalletState::from_ufvk(network, encoded, chain.clone())?,
         (None, None) => unreachable!("key material was checked above"),

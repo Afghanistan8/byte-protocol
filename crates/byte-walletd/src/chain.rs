@@ -66,6 +66,10 @@ pub enum ChainError {
     Lightwalletd(String),
     #[error("filesystem: {0}")]
     Io(#[from] std::io::Error),
+    #[error("proving parameters: {0}")]
+    Prover(String),
+    #[error("send failed: {0}")]
+    Send(String),
 }
 
 impl From<ChainError> for WalletStateError {
@@ -429,5 +433,171 @@ mod tests {
         for bad in ["", "abc", &"z".repeat(64), &"a".repeat(62), &"a".repeat(66)] {
             assert!(parse_txid(bad).is_err(), "should have rejected {bad:?}");
         }
+    }
+}
+
+// --------------------------------------------------------------------------------- send
+
+/// The outcome of a successful send.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendOutcome {
+    pub txid: String,
+    pub fee_zat: String,
+}
+
+/// Locate the Sapling proving parameters, downloading them once if absent.
+///
+/// `create_proposed_transactions` requires a Sapling `SpendProver` and `OutputProver` in
+/// its signature even when the transaction Byte builds contains no Sapling component at
+/// all — every output and the change are Ironwood. A real prover therefore has to exist
+/// even though it does no work here.
+///
+/// The parameters are about 50 MB and are fetched once into the platform's standard Zcash
+/// parameter directory, where every other Zcash wallet on the machine will also find them.
+pub fn ensure_sapling_prover() -> Result<zcash_proofs::prover::LocalTxProver, ChainError> {
+    if let Some(prover) = zcash_proofs::prover::LocalTxProver::with_default_location() {
+        return Ok(prover);
+    }
+
+    tracing::info!(
+        "Sapling proving parameters not found; downloading about 50 MB once. \
+         Byte builds Ironwood-only transactions, but the transaction builder's signature \
+         requires a Sapling prover regardless."
+    );
+    zcash_proofs::download_sapling_parameters(Some(600))
+        .map_err(|e| ChainError::Prover(format!("downloading Sapling parameters: {e}")))?;
+
+    zcash_proofs::prover::LocalTxProver::with_default_location()
+        .ok_or_else(|| ChainError::Prover("Sapling parameters still missing after download".into()))
+}
+
+impl LightwalletdChain {
+    /// Build, prove and broadcast a shielded Ironwood payment carrying `memo`.
+    ///
+    /// Change is directed to Ironwood via `fallback_change_pool`. That is not a detail:
+    /// change landing in another pool would be a pool-crossing transfer, and ZIP 318 makes
+    /// the net amount crossing public.
+    pub async fn send(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        to: &str,
+        amount_zat: u64,
+        memo: &str,
+    ) -> Result<SendOutcome, ChainError> {
+        use zcash_client_backend::data_api::wallet::{
+            create_proposed_transactions, propose_standard_transfer_to_address, SpendingKeys,
+        };
+        use zcash_client_backend::fees::StandardFeeRule;
+        use zcash_client_backend::wallet::OvkPolicy;
+        use zcash_keys::address::Address;
+        use zcash_protocol::memo::MemoBytes;
+
+        let params = self.network.params();
+        let mut db = self.open_db()?;
+
+        let account_id = *db
+            .get_account_ids()
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .first()
+            .ok_or_else(|| ChainError::Db("no account registered".into()))?;
+
+        let recipient = Address::decode(&params, to)
+            .ok_or_else(|| ChainError::Send(format!("could not parse address {to}")))?;
+
+        let amount = Zatoshis::from_u64(amount_zat)
+            .map_err(|e| ChainError::Send(format!("invalid amount: {e:?}")))?;
+
+        let memo_bytes = MemoBytes::from_bytes(memo.as_bytes())
+            .map_err(|e| ChainError::Send(format!("invalid memo: {e:?}")))?;
+
+        // The commitment-tree error type cannot be inferred from the arguments, so it is
+        // named explicitly: it is what zcash_client_sqlite's WalletCommitmentTrees uses.
+        let proposal = propose_standard_transfer_to_address::<
+            _,
+            _,
+            zcash_client_sqlite::wallet::commitment_tree::Error,
+        >(
+            &mut db,
+            &params,
+            StandardFeeRule::Zip317,
+            account_id,
+            ConfirmationsPolicy::MIN,
+            &recipient,
+            amount,
+            Some(memo_bytes),
+            None,
+            // Change stays in Ironwood. See the note on this method.
+            ShieldedPool::Ironwood,
+            None,
+            None,
+        )
+        .map_err(|e| ChainError::Send(format!("building proposal: {e}")))?;
+
+        let fee_zat = u64::from(proposal.steps().last().balance().fee_required());
+
+        let prover = ensure_sapling_prover()?;
+        let spending_keys = SpendingKeys::from_unified_spending_key(usk.clone());
+
+        // The input-selector and change-strategy error types appear only in the error
+        // variant here — the proposal was already built — so they are pinned to
+        // Infallible rather than threaded through.
+        let txids = create_proposed_transactions::<
+            _,
+            _,
+            std::convert::Infallible,
+            _,
+            std::convert::Infallible,
+            _,
+        >(
+            &mut db,
+            &params,
+            &prover,
+            &prover,
+            &spending_keys,
+            OvkPolicy::Sender,
+            &proposal,
+            None,
+        )
+        .map_err(|e| ChainError::Send(format!("building transaction: {e}")))?;
+
+        let txid = *txids.first();
+
+        // Broadcast. Until this succeeds nothing has left the machine, so a failure here
+        // means the payment did not happen — not that it happened and was lost.
+        let raw = db
+            .get_transaction(txid)
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .ok_or_else(|| {
+                ChainError::Send("built transaction is missing from the wallet".into())
+            })?;
+
+        let mut bytes = Vec::new();
+        raw.write(&mut bytes)
+            .map_err(|e| ChainError::Send(format!("serializing transaction: {e}")))?;
+
+        let mut client = connect(&self.endpoint).await?;
+        let response = client
+            .send_transaction(zcash_client_backend::proto::service::RawTransaction {
+                data: bytes,
+                height: 0,
+            })
+            .await
+            .map_err(|e| ChainError::Lightwalletd(e.to_string()))?
+            .into_inner();
+
+        if response.error_code != 0 {
+            return Err(ChainError::Send(format!(
+                "light server rejected the transaction: code {} {}",
+                response.error_code, response.error_message
+            )));
+        }
+
+        tracing::info!(txid = %txid, fee_zat, "broadcast");
+
+        Ok(SendOutcome {
+            txid: txid.to_string(),
+            fee_zat: fee_zat.to_string(),
+        })
     }
 }

@@ -58,6 +58,8 @@ impl From<WalletStateError> for ApiFailure {
             WalletStateError::NotSynced { .. } => (StatusCode::SERVICE_UNAVAILABLE, "not_synced"),
             WalletStateError::Key(_) => (StatusCode::INTERNAL_SERVER_ERROR, "key_error"),
             WalletStateError::ChainAccess(_) => (StatusCode::BAD_GATEWAY, "chain_unavailable"),
+            WalletStateError::NoChain => (StatusCode::SERVICE_UNAVAILABLE, "no_chain"),
+            WalletStateError::Send(_) => (StatusCode::BAD_GATEWAY, "send_failed"),
         };
         ApiFailure(status, ApiError::new(code, error.to_string()))
     }
@@ -168,6 +170,17 @@ pub struct MemoVerifyRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SendRequest {
+    /// Destination unified address.
+    pub to: String,
+    /// Zatoshis, as a base-10 integer string.
+    pub amount_zat: String,
+    /// The memo to attach. Byte always sends one.
+    pub memo: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct NotesQuery {
     /// Transaction identifier, 64 lowercase hex characters.
     pub txid: String,
@@ -185,6 +198,7 @@ pub fn router(state: AppState) -> Router {
         .route("/memo/verify", post(memo_verify))
         .route("/notes", get(notes))
         .route("/balance", get(balance))
+        .route("/send", post(send))
         // 64 KiB is far above any legitimate request here and well below anything that
         // would let an unauthenticated caller exhaust memory.
         .layer(tower_http::limit::RequestBodyLimitLayer::new(64 * 1024))
@@ -298,6 +312,32 @@ async fn balance(
 ) -> ApiResult<crate::state::BalanceRecord> {
     authorize(&headers, &state.api_token)?;
     Ok(Json(state.wallet.balance()?))
+}
+
+/// Build, prove and broadcast a shielded Ironwood payment.
+///
+/// This is the only route that moves value. A view-only deployment rejects it with
+/// `view_only` before any transaction is built.
+async fn send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<SendRequest>,
+) -> ApiResult<crate::chain::SendOutcome> {
+    authorize(&headers, &state.api_token)?;
+
+    let amount_zat: u64 = body.amount_zat.parse().map_err(|_| {
+        ApiFailure(
+            StatusCode::BAD_REQUEST,
+            ApiError::new(
+                "bad_amount",
+                "amountZat must be a base-10 integer string of zatoshis",
+            ),
+        )
+    })?;
+
+    Ok(Json(
+        state.wallet.send(&body.to, amount_zat, &body.memo).await?,
+    ))
 }
 
 fn decode_secret(hex_secret: &str) -> Result<Vec<u8>, ApiFailure> {

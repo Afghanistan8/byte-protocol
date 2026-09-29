@@ -29,3 +29,4 @@ Thumbs.db
 
 .byte-walletd/
 .byte-walletd-e2e/
+crates/byte-walletd/.env.testnet
