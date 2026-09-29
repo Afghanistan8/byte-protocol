@@ -33,7 +33,7 @@ pub struct Config {
     #[arg(
         long,
         env = "BYTE_WALLETD_LIGHTWALLETD",
-        default_value = "https://testnet.lightwalletd.com:9067"
+        default_value = "https://testnet.zec.rocks:443"
     )]
     pub lightwalletd: String,
 

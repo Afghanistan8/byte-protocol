@@ -13,6 +13,8 @@
 //! how much, carrying which memo — nothing stronger.
 
 pub mod api;
+pub mod blockcache;
+pub mod chain;
 pub mod config;
 pub mod keys;
 pub mod memo;

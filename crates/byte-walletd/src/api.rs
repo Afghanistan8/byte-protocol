@@ -169,7 +169,8 @@ pub struct MemoVerifyRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotesQuery {
-    pub pay_to: String,
+    /// Transaction identifier, 64 lowercase hex characters.
+    pub txid: String,
 }
 
 // ------------------------------------------------------------------------------- routes
@@ -288,7 +289,7 @@ async fn notes(
     Query(query): Query<NotesQuery>,
 ) -> ApiResult<Vec<crate::state::NoteRecord>> {
     authorize(&headers, &state.api_token)?;
-    Ok(Json(state.wallet.notes_for(&query.pay_to)?))
+    Ok(Json(state.wallet.outputs_for_txid(&query.txid)?))
 }
 
 async fn balance(

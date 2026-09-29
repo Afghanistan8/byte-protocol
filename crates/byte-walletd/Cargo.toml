@@ -13,6 +13,29 @@ publish = false
 # checked. The `orchard` feature is what makes Orchard receivers available; Ironwood
 # reuses them, so it is required even though Byte never touches the Orchard pool.
 zcash_keys = { version = "0.16.1", features = ["orchard", "sapling"] }
+# `sync` bundles the lightwalletd gRPC client and the scan loop; the tls feature is what
+# lets it reach a public endpoint over https.
+zcash_client_backend = { version = "0.24.0", features = [
+    "sync",
+    "lightwalletd-tonic-transport",
+    "lightwalletd-tonic-tls-webpki-roots",
+    "orchard",
+] }
+zcash_client_sqlite = { version = "0.22.0", features = ["orchard"] }
+rusqlite = "0.37"
+secrecy_zip32 = { package = "secrecy", version = "0.8" }
+# `tls-webpki-roots` supplies the trust roots but no crypto backend; without `tls-ring`
+# rustls panics at the first TLS handshake because it cannot pick a CryptoProvider.
+tonic = { version = "0.14", default-features = false, features = [
+    "transport",
+    "channel",
+    "codegen",
+    "tls-ring",
+    "tls-webpki-roots",
+] }
+rand = "0.8"
+# BlockCache is declared with #[async_trait], so implementations must use it too.
+async-trait = "0.1"
 zcash_protocol = "0.10.6"
 zcash_address = "0.13.0"
 zcash_primitives = "0.30.1"
@@ -41,6 +64,7 @@ subtle = "2.6"
 secrecy = "0.10.3"
 
 [dev-dependencies]
+futures-executor = "0.3"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "test-util"] }
 
 [lints.rust]

@@ -10,7 +10,7 @@
 //! because the wallet is empty — and a verifier that reads "no notes received" from an
 //! unsynced wallet would reject payments that were made correctly.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
@@ -31,11 +31,17 @@ pub enum WalletStateError {
     ChainAccess(String),
 }
 
-/// A note as reported to the TypeScript side.
+/// An output received by this wallet, as reported to the TypeScript side.
 ///
-/// Field names match `ReceivedNote` in `packages/wallet/src/types.ts`. `pool` is the one
-/// the verifier actually depends on: it says where the value landed, which the address
-/// alone cannot.
+/// `pool` is the field the verifier actually depends on: it says where the value landed,
+/// which the address alone cannot.
+///
+/// There is deliberately no `payTo`. `WalletRead::get_received_outputs` reports an
+/// output's pool and value but not the address it arrived at, and inventing one here
+/// would be a guess presented as a fact. The destination is bound by the memo instead:
+/// a Byte memo commits to `invoiceId` and `amount` and `payTo` under the payee's secret,
+/// so a memo that verifies proves which invoice — and therefore which address — the
+/// payment was for. See `crates/byte-walletd/src/chain.rs`.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NoteRecord {
@@ -43,7 +49,6 @@ pub struct NoteRecord {
     /// One of `transparent`, `sapling`, `orchard`, `ironwood`.
     pub pool: String,
     pub value_zat: String,
-    pub pay_to: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memo: Option<String>,
     pub confirmations: u32,
@@ -76,7 +81,12 @@ pub struct SyncStatus {
 /// tests do not need a network or a database.
 pub trait ChainData: Send + Sync {
     fn status(&self) -> Result<SyncStatus, WalletStateError>;
-    fn notes_for(&self, pay_to: &str) -> Result<Vec<NoteRecord>, WalletStateError>;
+    /// Outputs this wallet received in the given transaction.
+    ///
+    /// Keyed by transaction because the payer reports a txid in its payment payload
+    /// (docs/SPEC.md section 5.3), and because that is what the underlying wallet API
+    /// offers.
+    fn outputs_for_txid(&self, txid: &str) -> Result<Vec<NoteRecord>, WalletStateError>;
     fn balance(&self) -> Result<BalanceRecord, WalletStateError>;
 }
 
@@ -96,7 +106,7 @@ impl ChainData for Unsynced {
         })
     }
 
-    fn notes_for(&self, _pay_to: &str) -> Result<Vec<NoteRecord>, WalletStateError> {
+    fn outputs_for_txid(&self, _txid: &str) -> Result<Vec<NoteRecord>, WalletStateError> {
         Err(WalletStateError::NotSynced {
             synced_height: 0,
             chain_tip: None,
@@ -116,7 +126,7 @@ pub struct WalletState {
     spending: Option<SpendingKeys>,
     viewing: ViewingKeys,
     cursor: Mutex<DiversifierCursor>,
-    chain: Box<dyn ChainData>,
+    chain: Arc<dyn ChainData>,
 }
 
 impl WalletState {
@@ -125,7 +135,7 @@ impl WalletState {
         network: Network,
         seed: Vec<u8>,
         account: u32,
-        chain: Box<dyn ChainData>,
+        chain: Arc<dyn ChainData>,
     ) -> Result<Self, WalletStateError> {
         let spending = SpendingKeys::from_seed(network, seed, account)?;
         let viewing = ViewingKeys::from_ufvk(network, spending.ufvk()?);
@@ -145,7 +155,7 @@ impl WalletState {
     pub fn from_ufvk(
         network: Network,
         ufvk: &str,
-        chain: Box<dyn ChainData>,
+        chain: Arc<dyn ChainData>,
     ) -> Result<Self, WalletStateError> {
         Ok(Self {
             network,
@@ -190,8 +200,8 @@ impl WalletState {
         self.chain.status()
     }
 
-    pub fn notes_for(&self, pay_to: &str) -> Result<Vec<NoteRecord>, WalletStateError> {
-        self.chain.notes_for(pay_to)
+    pub fn outputs_for_txid(&self, txid: &str) -> Result<Vec<NoteRecord>, WalletStateError> {
+        self.chain.outputs_for_txid(txid)
     }
 
     pub fn balance(&self) -> Result<BalanceRecord, WalletStateError> {
@@ -206,7 +216,7 @@ mod tests {
     const SEED: [u8; 32] = [42u8; 32];
 
     fn spender() -> WalletState {
-        WalletState::from_seed(Network::Test, SEED.to_vec(), 0, Box::new(Unsynced)).unwrap()
+        WalletState::from_seed(Network::Test, SEED.to_vec(), 0, Arc::new(Unsynced)).unwrap()
     }
 
     #[test]
@@ -215,7 +225,7 @@ mod tests {
         assert!(spending.can_spend());
 
         let ufvk = spending.export_ufvk().unwrap();
-        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Box::new(Unsynced)).unwrap();
+        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Arc::new(Unsynced)).unwrap();
         assert!(!viewer.can_spend());
     }
 
@@ -224,7 +234,7 @@ mod tests {
         // This is what lets a facilitator issue invoices for a merchant without being
         // able to take the proceeds.
         let ufvk = spender().export_ufvk().unwrap();
-        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Box::new(Unsynced)).unwrap();
+        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Arc::new(Unsynced)).unwrap();
         let (address, _) = viewer.new_invoice_address().unwrap();
         assert!(address.starts_with("utest1"));
     }
@@ -233,7 +243,7 @@ mod tests {
     fn a_viewing_wallet_derives_the_same_addresses_as_its_spender() {
         let spending = spender();
         let ufvk = spending.export_ufvk().unwrap();
-        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Box::new(Unsynced)).unwrap();
+        let viewer = WalletState::from_ufvk(Network::Test, &ufvk, Arc::new(Unsynced)).unwrap();
         assert_eq!(
             spending.new_invoice_address().unwrap(),
             viewer.new_invoice_address().unwrap()
@@ -260,7 +270,7 @@ mod tests {
             Err(WalletStateError::NotSynced { .. })
         ));
         assert!(matches!(
-            wallet.notes_for("utest1anything"),
+            wallet.outputs_for_txid(&"a".repeat(64)),
             Err(WalletStateError::NotSynced { .. })
         ));
     }
@@ -275,6 +285,6 @@ mod tests {
 
     #[test]
     fn rejects_a_malformed_viewing_key() {
-        assert!(WalletState::from_ufvk(Network::Test, "nonsense", Box::new(Unsynced)).is_err());
+        assert!(WalletState::from_ufvk(Network::Test, "nonsense", Arc::new(Unsynced)).is_err());
     }
 }

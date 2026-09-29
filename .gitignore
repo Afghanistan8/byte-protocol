@@ -28,3 +28,4 @@ Thumbs.db
 *.log
 
 .byte-walletd/
+.byte-walletd-e2e/

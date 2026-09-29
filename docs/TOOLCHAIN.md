@@ -94,7 +94,8 @@ so no full node is required to run or demo it.
 
 | Resource | Detail |
 |----------|--------|
-| lightwalletd | `testnet.lightwalletd.com:9067` |
+| lightwalletd | `https://testnet.zec.rocks:443` — **verified working 2026-09-29**, synced testnet to height 4,412,980 |
+| ~~lightwalletd~~ | ~~`testnet.lightwalletd.com:9067`~~ — **does not resolve.** Recorded here from a secondary source on 2026-09-29 and found dead the same day when first used. Kept as a correction: a host that appears in search results is not evidence that it exists. |
 | Faucet | <https://zcashfaucet.jinolabs.xyz/> — 0.1 TAZ, browser proof-of-work gated, pays shielded z2z |
 | Faucet | [Valar Group](https://github.com/valargroup/valar-testnet-faucet) — 0.125 TAZ per IP per day |
 
