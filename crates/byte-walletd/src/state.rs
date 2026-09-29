@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 
-use crate::chain::{LightwalletdChain, SendOutcome};
+use crate::chain::{LightwalletdChain, SendOutcome, SendOutput};
 use crate::keys::{DiversifierCursor, KeyError, Network, SpendingKeys, ViewingKeys};
 
 #[derive(Debug, thiserror::Error)]
@@ -202,6 +202,17 @@ impl WalletState {
             .send(&usk, to, amount_zat, memo)
             .await
             .map_err(|e| WalletStateError::Send(e.to_string()))
+    }
+
+    /// Send one transaction carrying several outputs.
+    pub async fn send_many(&self, outputs: &[SendOutput]) -> Result<SendOutcome, WalletStateError> {
+        let keys = self.spending.as_ref().ok_or(WalletStateError::ViewOnly)?;
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        let usk = keys.usk()?;
+        sender
+            .send_many(&usk, outputs)
+            .await
+            .map_err(WalletStateError::from)
     }
 
     /// Sweep transparent value into Ironwood.

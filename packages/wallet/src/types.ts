@@ -72,14 +72,58 @@ export interface WalletBalance {
   unusableZat: string;
 }
 
-/** A payment request handed to a spending wallet. */
-export interface SendRequest {
+/** One output of a payment. */
+export interface SendOutput {
   /** Destination unified address. */
   to: string;
   /** Zatoshis, canonical integer string. */
   amountZat: string;
-  /** Memo text to attach. Byte always sends one. */
-  memo: string;
+  /**
+   * Memo text to attach to this output.
+   *
+   * Byte's payment leg always carries one: it is what binds the note to an invoice. A
+   * facilitator fee leg carries none, because it binds to nothing and a memo there would
+   * be a second place an invoice identifier could reach a third party.
+   */
+  memo?: string;
+}
+
+/**
+ * A payment request handed to a spending wallet.
+ *
+ * ## Why this is a union rather than one optional field
+ *
+ * A Byte payment is usually one output. When a facilitator charges, it is two, **in one
+ * transaction** — and that atomicity is the whole reason the fee check can be trusted:
+ * the payee's output and the fee output arrive together or neither does.
+ *
+ * The single-output form is kept because most callers are single-output and reading
+ * `{ to, amountZat, memo }` is clearer than `{ outputs: [{ … }] }` for the common case.
+ * Implementations normalize with `sendOutputs()` and never branch on the shape.
+ */
+export type SendRequest =
+  | {
+      to: string;
+      amountZat: string;
+      memo: string;
+      outputs?: never;
+    }
+  | {
+      outputs: SendOutput[];
+      to?: never;
+      amountZat?: never;
+      memo?: never;
+    };
+
+/**
+ * Normalize either form to a list of outputs.
+ *
+ * Every wallet backend calls this first, so the two shapes exist only at the boundary and
+ * nothing downstream has to know which one it was handed.
+ */
+export function sendOutputs(request: SendRequest): SendOutput[] {
+  if (request.outputs !== undefined) return request.outputs;
+  return [{ to: request.to, amountZat: request.amountZat, memo: request.memo }];
 }
 
 export interface SendResult {

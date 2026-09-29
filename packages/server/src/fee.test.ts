@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { NETWORK_TESTNET, ByteProtocolError, parseZip321Multi } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
 import { MockChain, MockWallet } from "@byte-protocol/wallet";
+import { BytePayer, SpendGuard } from "@byte-protocol/client";
 import { InvoiceIssuer } from "./issuer.js";
 import { PaymentVerifier } from "./verifier.js";
 
@@ -125,20 +126,20 @@ describe("a facilitator fee", () => {
 });
 
 describe("verifying a fee", () => {
-  /** Pay both legs of the request, as a well-behaved payer does. */
-  async function payBoth(h: ReturnType<typeof harness>, invoice: Awaited<ReturnType<InvoiceIssuer["issue"]>>) {
-    const { txid } = await h.payer.send({
-      to: invoice.payTo,
-      amountZat: invoice.amount,
-      memo: invoice.memo,
-    });
-    // The mock builds one transaction per send, so the fee leg is credited into the same
-    // transaction to model the atomicity a real two-output transaction has.
-    h.chain.payInto({
-      payTo: invoice.fee?.payTo ?? "",
-      amountZat: invoice.fee?.amount ?? "0",
-      txid,
-    });
+  /**
+   * Pay through `BytePayer`, the way a real client does.
+   *
+   * This used to hand-credit the fee leg with `chain.payInto`, which proved the verifier
+   * and hid the fact that nothing in the payer path could produce a second output at all.
+   * Every fee invoice was unpayable by Byte's own client and the suite was green. Going
+   * through the payer is the only version of this test worth having.
+   */
+  async function payBoth(
+    h: ReturnType<typeof harness>,
+    invoice: Awaited<ReturnType<InvoiceIssuer["issue"]>>,
+  ) {
+    const payer = new BytePayer({ wallet: h.payer });
+    const { txid } = await payer.pay(invoice, "https://seller.example");
     h.chain.mine(1);
     return txid;
   }

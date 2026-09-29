@@ -10,13 +10,15 @@ import {
   BytePayerError,
   ByteProtocolError,
   BYTE_SCHEME,
+  feeZatFor,
+  formatZat,
   parsePaymentRequirements,
   parseZat,
   verifyMemo,
   type BytePaymentPayload,
   type BytePaymentRequirements,
 } from "@byte-protocol/core";
-import type { SpendingWallet } from "@byte-protocol/wallet";
+import type { SendOutput, SpendingWallet } from "@byte-protocol/wallet";
 import { SpendGuard } from "./guard.js";
 
 export interface BytePayerOptions {
@@ -83,9 +85,38 @@ export class BytePayer {
       throw new ByteProtocolError("invoice asks for zero");
     }
 
+    // Every output this invoice asks for. The payee's leg carries the memo that binds it;
+    // a facilitator fee leg, when present, carries none and goes in the same transaction.
+    const outputs: SendOutput[] = [
+      { to: invoice.payTo, amountZat: invoice.amount, memo: invoice.memo },
+    ];
+    if (invoice.fee !== undefined) {
+      // Check the arithmetic rather than taking the amount on trust. A server that names
+      // its terms and then asks for a different number is either broken or helping itself,
+      // and the payer is the only party positioned to notice.
+      const expected = feeZatFor(invoice.amount, {
+        bps: invoice.fee.bps,
+        payTo: invoice.fee.payTo,
+      });
+      if (parseZat(invoice.fee.amount) > parseZat(expected)) {
+        throw new ByteProtocolError(
+          `this invoice asks for a ${invoice.fee.amount} zatoshi facilitator fee, but its own ` +
+            `terms of ${invoice.fee.bps} bps on ${invoice.amount} come to ${expected}`,
+        );
+      }
+      outputs.push({ to: invoice.fee.payTo, amountZat: invoice.fee.amount });
+    }
+
+    // The guard authorizes what actually leaves the wallet, fee included. Authorizing only
+    // the payee's leg would let a facilitator fee slip past a per-call cap the operator set
+    // precisely to bound what one request can cost them.
+    const totalZat = formatZat(
+      outputs.reduce((sum, output) => sum + parseZat(output.amountZat), 0n),
+    );
+
     if (this.#guard !== undefined) {
       const decision = await this.#guard.authorize({
-        amountZat: invoice.amount,
+        amountZat: totalZat,
         url,
         invoiceId: invoice.invoiceId,
       });
@@ -94,16 +125,12 @@ export class BytePayer {
 
     let result: { txid: string; feeZat: string };
     try {
-      result = await this.#wallet.send({
-        to: invoice.payTo,
-        amountZat: invoice.amount,
-        memo: invoice.memo,
-      });
+      result = await this.#wallet.send({ outputs });
     } catch (error) {
       // The payment did not happen, so return the amount to the daily budget. The wallet
       // is responsible for having broadcast nothing on failure; `wrong_pool_source` and
       // `insufficient_funds` both refuse before building anything.
-      this.#guard?.refund(invoice.amount);
+      this.#guard?.refund(totalZat);
       throw error;
     }
 

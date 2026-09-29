@@ -244,12 +244,42 @@ describe("sending", () => {
     });
 
     expect(result).toMatchObject({ txid: expect.stringMatching(/^[0-9a-f]{64}$/), feeZat: "10000" });
+
+    // Always the `outputs` form on the wire, even for one output: one shape means one code
+    // path in the sidecar, and the flat form is a caller convenience rather than a second
+    // protocol.
     const sent = fake.requests.find((r) => r.path === "/send");
-    expect(sent?.body).toMatchObject({
-      to: "utest1destination",
-      amountZat: "1000000",
-      memo: "BYTE1|abc|def",
+    expect(sent?.body).toEqual({
+      outputs: [{ to: "utest1destination", amountZat: "1000000", memo: "BYTE1|abc|def" }],
     });
+  });
+
+  it("sends several outputs as one transaction", async () => {
+    // A payment and its facilitator fee are atomic because they share a transaction. Two
+    // broadcasts could not give that, and the verifier's 'both arrived' check rests on it.
+    const { fake, wallet } = await connect();
+    await wallet.send({
+      outputs: [
+        { to: "utest1payee", amountZat: "1000000", memo: "BYTE1|abc|def" },
+        { to: "utest1facilitator", amountZat: "10000" },
+      ],
+    });
+
+    const sent = fake.requests.find((r) => r.path === "/send");
+    expect(sent?.body).toEqual({
+      outputs: [
+        { to: "utest1payee", amountZat: "1000000", memo: "BYTE1|abc|def" },
+        // No memo on the fee leg: it binds to no invoice, and a memo there would be a
+        // second place an invoice identifier could reach a third party.
+        { to: "utest1facilitator", amountZat: "10000" },
+      ],
+    });
+  });
+
+  it("refuses a payment with no outputs at all", async () => {
+    const { fake, wallet } = await connect();
+    await expect(wallet.send({ outputs: [] })).rejects.toThrow(/at least one output/);
+    expect(fake.requests.filter((r) => r.path === "/send")).toHaveLength(0);
   });
 
   it("raises wrong_pool_source as a payer refusal, not a transport error", async () => {

@@ -23,6 +23,7 @@ import {
 } from "@byte-protocol/core";
 import type {
   ReceivedNote,
+  SendOutput,
   SendRequest,
   SendResult,
   ShieldRequest,
@@ -32,6 +33,7 @@ import type {
   WalletBalance,
   WalletStatus,
 } from "./types.js";
+import { sendOutputs } from "./types.js";
 import type { ShieldingWallet, SpendingWallet, ViewOnlyWallet } from "./wallet.js";
 
 /**
@@ -412,11 +414,24 @@ export class MockWallet implements ShieldingWallet {
     };
   }
 
+  /**
+   * Send one transaction carrying every requested output.
+   *
+   * **One transaction, not one per output.** That is not a mock convenience: a Byte
+   * payment and its facilitator fee are atomic precisely because they are outputs of the
+   * same transaction, and a mock that quietly built two would let a verifier pass that
+   * depends on atomicity the real chain would not have given it.
+   */
   async send(request: SendRequest): Promise<SendResult> {
-    const amount = parseZat(request.amountZat);
+    const outputs = sendOutputs(request);
+    if (outputs.length === 0) {
+      throw new ByteProtocolError("a payment needs at least one output");
+    }
+
+    const total = outputs.reduce((sum, output) => sum + parseZat(output.amountZat), 0n);
     const address = this.fundingAddress;
     const spendable = this.#chain.spendableAt(address, this.#minSpendConfirmations);
-    const required = amount + MOCK_FEE_ZAT;
+    const required = total + MOCK_FEE_ZAT;
 
     if (spendable < required) {
       // Distinguish "the money is elsewhere" from "there is no money". An operator whose
@@ -436,13 +451,20 @@ export class MockWallet implements ShieldingWallet {
     }
 
     this.#chain.consumeNotes(address, required, this.#minSpendConfirmations);
-    const txid = this.#chain.payInto({
-      payTo: request.to,
-      amountZat: request.amountZat,
-      memo: request.memo,
-      pool: BYTE_POOL,
-    });
-    return { txid, feeZat: formatZat(MOCK_FEE_ZAT) };
+
+    // The first output mints the transaction; the rest join it.
+    let txid: string | undefined;
+    for (const output of outputs) {
+      txid = this.#chain.payInto({
+        payTo: output.to,
+        amountZat: output.amountZat,
+        ...(output.memo !== undefined ? { memo: output.memo } : {}),
+        pool: BYTE_POOL,
+        ...(txid !== undefined ? { txid } : {}),
+      });
+    }
+
+    return { txid: txid as string, feeZat: formatZat(MOCK_FEE_ZAT) };
   }
 
   /**

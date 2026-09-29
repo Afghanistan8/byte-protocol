@@ -37,6 +37,7 @@ import type {
   WalletBalance,
   WalletStatus,
 } from "./types.js";
+import { sendOutputs } from "./types.js";
 import { isTransparentAddressLike } from "./mock.js";
 import type { ShieldingWallet, SpendingWallet, ViewOnlyWallet } from "./wallet.js";
 
@@ -239,9 +240,27 @@ export class WalletdWallet implements ShieldingWallet {
     };
   }
 
+  /**
+   * Send one transaction carrying every requested output.
+   *
+   * Always the `outputs` form on the wire, even for a single output: one shape means one
+   * code path in the sidecar, and the flat form exists for callers' convenience rather
+   * than as a second protocol.
+   */
   async send(request: SendRequest): Promise<SendResult> {
+    const outputs = sendOutputs(request);
+    if (outputs.length === 0) {
+      throw new ByteProtocolError("a payment needs at least one output");
+    }
+
     const response = (await this.#request("POST", "/send", {
-      body: { to: request.to, amountZat: request.amountZat, memo: request.memo },
+      body: {
+        outputs: outputs.map((output) => ({
+          to: output.to,
+          amountZat: output.amountZat,
+          ...(output.memo !== undefined ? { memo: output.memo } : {}),
+        })),
+      },
       timeoutMs: this.#sendTimeoutMs,
     })) as { txid?: unknown; feeZat?: unknown };
 

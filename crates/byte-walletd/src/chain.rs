@@ -635,6 +635,15 @@ mod tests {
 
 // --------------------------------------------------------------------------------- send
 
+/// One output of a payment.
+#[derive(Debug, Clone)]
+pub struct SendOutput {
+    pub to: String,
+    pub amount_zat: u64,
+    /// Absent for a transparent output, which cannot carry one.
+    pub memo: Option<String>,
+}
+
 /// The outcome of a successful send.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -722,9 +731,18 @@ impl LightwalletdChain {
         // rather than surfacing as an opaque builder error.
         decode_transparent(&params, to_transparent)?;
 
-        // No memo: a transparent output cannot carry one. Passing one here would be
-        // silently dropped, and a caller would think their memo had gone out.
-        self.send_to(usk, to_transparent, amount_zat, None).await
+        // No memo: a transparent output cannot carry one. zip321::Payment refuses the
+        // combination outright, which is better than silently dropping it and leaving a
+        // caller believing their memo went out.
+        self.send_to(
+            usk,
+            &[SendOutput {
+                to: to_transparent.to_string(),
+                amount_zat,
+                memo: None,
+            }],
+        )
+        .await
     }
 
     /// Serialize a built transaction and hand it to the light server.
@@ -940,7 +958,27 @@ impl LightwalletdChain {
         amount_zat: u64,
         memo: &str,
     ) -> Result<SendOutcome, ChainError> {
-        self.send_to(usk, to, amount_zat, Some(memo)).await
+        self.send_to(
+            usk,
+            &[SendOutput {
+                to: to.to_string(),
+                amount_zat,
+                memo: Some(memo.to_string()),
+            }],
+        )
+        .await
+    }
+
+    /// Send one transaction carrying several outputs.
+    ///
+    /// This is how a facilitator fee is paid: the payee's leg and the fee leg in one
+    /// transaction, so the verifier's "both arrived" check means something.
+    pub async fn send_many(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        outputs: &[SendOutput],
+    ) -> Result<SendOutcome, ChainError> {
+        self.send_to(usk, outputs).await
     }
 
     /// The shared transfer path.
@@ -948,20 +986,21 @@ impl LightwalletdChain {
     /// `memo` is optional only because a transparent output cannot carry one. Every Byte
     /// *payment* has a memo — it is what binds a note to an invoice — so the public
     /// `send` above requires it, and only `unshield` passes `None`.
-    async fn send_to(
-        &self,
-        usk: &zcash_keys::keys::UnifiedSpendingKey,
-        to: &str,
-        amount_zat: u64,
-        memo: Option<&str>,
-    ) -> Result<SendOutcome, ChainError> {
-        use zcash_client_backend::data_api::wallet::{
-            create_proposed_transactions, propose_standard_transfer_to_address, SpendingKeys,
+    async fn send_to(&self, usk: &zcash_keys::keys::UnifiedSpendingKey, outputs: &[SendOutput]) -> Result<SendOutcome, ChainError> {
+        use zcash_client_backend::data_api::wallet::input_selection::{
+            GreedyInputSelector, SpendPolicy,
         };
-        use zcash_client_backend::fees::StandardFeeRule;
+        use zcash_client_backend::data_api::wallet::{
+            create_proposed_transactions, propose_transfer, SpendingKeys,
+        };
+        use zcash_client_backend::fees::standard::SingleOutputChangeStrategy;
+        use zcash_client_backend::fees::{DustOutputPolicy, StandardFeeRule};
         use zcash_client_backend::wallet::OvkPolicy;
-        use zcash_keys::address::Address;
         use zcash_protocol::memo::MemoBytes;
+
+        if outputs.is_empty() {
+            return Err(ChainError::Send("a payment needs at least one output".into()));
+        }
 
         let params = self.network.params();
         let mut db = self.open_db()?;
@@ -972,53 +1011,74 @@ impl LightwalletdChain {
             .first()
             .ok_or_else(|| ChainError::Db("no account registered".into()))?;
 
-        let recipient = Address::decode(&params, to)
-            .ok_or_else(|| ChainError::Send(format!("could not parse address {to}")))?;
+        // One transaction request carrying every output.
+        //
+        // **One transaction, not one per output.** A Byte payment and its facilitator fee
+        // are atomic precisely because they share a transaction: the verifier checks both
+        // arrived, and "both or neither" is a property the chain gives for free here and
+        // could not give across two broadcasts.
+        let mut payments = Vec::with_capacity(outputs.len());
+        for output in outputs {
+            let recipient = zcash_address::ZcashAddress::try_from_encoded(&output.to)
+                .map_err(|e| ChainError::Send(format!("could not parse address {}: {e}", output.to)))?;
 
-        let amount = Zatoshis::from_u64(amount_zat)
-            .map_err(|e| ChainError::Send(format!("invalid amount: {e:?}")))?;
+            let amount = Zatoshis::from_u64(output.amount_zat)
+                .map_err(|e| ChainError::Send(format!("invalid amount: {e:?}")))?;
 
-        let memo_bytes = match memo {
-            Some(text) => Some(
-                MemoBytes::from_bytes(text.as_bytes())
-                    .map_err(|e| ChainError::Send(format!("invalid memo: {e:?}")))?,
-            ),
-            None => None,
-        };
+            let memo = match output.memo.as_deref() {
+                Some(text) => Some(
+                    MemoBytes::from_bytes(text.as_bytes())
+                        .map_err(|e| ChainError::Send(format!("invalid memo: {e:?}")))?,
+                ),
+                None => None,
+            };
+
+            payments.push(
+                zip321::Payment::new(recipient, Some(amount), memo, None, None, vec![])
+                    .map_err(|e| ChainError::Send(format!("invalid payment: {e:?}")))?,
+            );
+        }
+
+        let request = zip321::TransactionRequest::new(payments)
+            .map_err(|e| ChainError::Send(format!("invalid transaction request: {e:?}")))?;
+
+        let input_selector = GreedyInputSelector::new();
+        // Change stays in Ironwood: change landing elsewhere would be a pool-crossing
+        // transfer, and ZIP 318 makes the net amount crossing public.
+        let change_strategy = SingleOutputChangeStrategy::new(
+            StandardFeeRule::Zip317,
+            None,
+            ShieldedPool::Ironwood,
+            DustOutputPolicy::default(),
+        );
+
+        // Ironwood in, and nothing else. `SpendPolicy` restricts the selector to the named
+        // pools and permits no transparent spending, so it returns InsufficientFunds rather
+        // than reaching into a pool the caller did not permit. That is the real fix: the
+        // check below now confirms a guarantee the selector was already given, instead of
+        // being the only thing standing between a shortfall and a public turnstile crossing.
+        let spend_policy = SpendPolicy::shielded_pools([ShieldedPool::Ironwood]);
 
         // The commitment-tree error type cannot be inferred from the arguments, so it is
         // named explicitly: it is what zcash_client_sqlite's WalletCommitmentTrees uses.
-        let proposal = propose_standard_transfer_to_address::<
-            _,
-            _,
-            zcash_client_sqlite::wallet::commitment_tree::Error,
-        >(
+        let proposal = propose_transfer::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
             &mut db,
             &params,
-            StandardFeeRule::Zip317,
             account_id,
+            &input_selector,
+            &change_strategy,
+            request,
             ConfirmationsPolicy::MIN,
-            &recipient,
-            amount,
-            memo_bytes,
-            None,
-            // Change stays in Ironwood. See the note on this method.
-            ShieldedPool::Ironwood,
+            &spend_policy,
             None,
             None,
         )
         .map_err(|e| ChainError::Send(format!("building proposal: {e}")))?;
 
-        // Refuse anything that is not funded entirely from Ironwood, before it is proved,
-        // signed or broadcast.
-        //
-        // This check is not belt-and-braces. `propose_standard_transfer_to_address` takes
-        // no parameter restricting *source* pools — `fallback_change_pool` governs change
-        // only — so its input selector is free to reach for a transparent UTXO or a
-        // leftover Sapling note to make up an amount. Byte's wallet contract says
-        // implementations MUST NOT do that: crossing pools publishes the net amount
-        // crossing (ZIP 318), which is the disclosure the whole protocol exists to avoid.
-        // Without this, that guarantee held only in the mock.
+        // Belt and braces, and cheap. The selector was told Ironwood only; this confirms
+        // the proposal it produced honours that, before anything is proved, signed or
+        // broadcast. Two independent checks on the one property the whole protocol rests on
+        // is the right number.
         assert_ironwood_funded(&proposal)?;
 
         let fee_zat = u64::from(proposal.steps().last().balance().fee_required());

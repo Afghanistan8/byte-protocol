@@ -171,15 +171,36 @@ pub struct MemoVerifyRequest {
     pub pay_to: String,
 }
 
+/// One output of a payment.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SendRequest {
-    /// Destination unified address.
+pub struct SendOutputRequest {
+    /// Destination address.
     pub to: String,
     /// Zatoshis, as a base-10 integer string.
     pub amount_zat: String,
-    /// The memo to attach. Byte always sends one.
-    pub memo: String,
+    /// The memo to attach. Absent on a fee leg, and on any transparent output.
+    #[serde(default)]
+    pub memo: Option<String>,
+}
+
+/// A payment.
+///
+/// Either the single-output form (`to`/`amountZat`/`memo`) or `outputs`. Both are accepted
+/// because most payments are one output and the flat form reads better, while a facilitator
+/// fee needs two **in one transaction** — atomicity is exactly why the verifier's "both
+/// arrived" check means anything.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SendRequest {
+    #[serde(default)]
+    pub to: Option<String>,
+    #[serde(default)]
+    pub amount_zat: Option<String>,
+    #[serde(default)]
+    pub memo: Option<String>,
+    #[serde(default)]
+    pub outputs: Option<Vec<SendOutputRequest>>,
 }
 
 /// Sweep transparent value into Ironwood.
@@ -398,11 +419,39 @@ async fn send(
 ) -> ApiResult<crate::chain::SendOutcome> {
     authorize(&headers, &state.api_token)?;
 
-    let amount_zat = parse_zat(&body.amount_zat, "amountZat")?;
+    let requested = match body.outputs {
+        Some(outputs) => outputs,
+        None => {
+            let to = body.to.ok_or_else(|| {
+                ApiFailure(
+                    StatusCode::BAD_REQUEST,
+                    ApiError::new("bad_request", "send needs either `outputs` or `to`"),
+                )
+            })?;
+            let amount_zat = body.amount_zat.ok_or_else(|| {
+                ApiFailure(
+                    StatusCode::BAD_REQUEST,
+                    ApiError::new("bad_request", "send needs either `outputs` or `amountZat`"),
+                )
+            })?;
+            vec![SendOutputRequest {
+                to,
+                amount_zat,
+                memo: body.memo,
+            }]
+        }
+    };
 
-    Ok(Json(
-        state.wallet.send(&body.to, amount_zat, &body.memo).await?,
-    ))
+    let mut outputs = Vec::with_capacity(requested.len());
+    for output in requested {
+        outputs.push(crate::chain::SendOutput {
+            to: output.to,
+            amount_zat: parse_zat(&output.amount_zat, "amountZat")?,
+            memo: output.memo,
+        });
+    }
+
+    Ok(Json(state.wallet.send_many(&outputs).await?))
 }
 
 /// Parse a zatoshi amount, naming the field that was wrong.
