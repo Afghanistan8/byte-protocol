@@ -412,7 +412,7 @@
 <pre style="margin-top:24px"><span class="c">// an agent asks for something that costs money</span>
 GET /report                              <span class="c">&#8594;</span> <span class="g">402</span> + invoice
 
-<span class="c">// it pays — shielded. an observer sees a transaction happened, nothing more</span>
+<span class="c">// it pays: shielded. an observer sees a transaction happened, nothing more</span>
 BYTE1|&lt;invoiceId&gt;|&lt;binding&gt;               <span class="c">&#8594;</span> <span class="g">ironwood</span>
 
 <span class="c">// it retries with the proof; the payee verifies with a view-only key</span>
@@ -574,7 +574,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
 
   // The payee's HMAC key. A real deployment reads this from the environment and never
   // publishes it; this page uses a fixed demo key so the result is reproducible. Holding
-  // the key is exactly what lets a payee — and only a payee — recognise its own invoice.
+  // only a payee holds the key, and it is exactly what lets them recognise their own invoice.
   var DEMO_SECRET = new Uint8Array(32).fill(7);
 
   var el = function (id) { return document.getElementById(id); };
@@ -633,7 +633,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
       if (changed.length === 0) {
         el("m-verdict").className = "verdict ok";
         el("m-verdict").textContent =
-          "Verifies. The payee recomputes this from its own key — no database lookup needed.";
+          "Verifies. The payee recomputes this from its own key: no database lookup needed.";
       } else {
         el("m-verdict").className = "verdict no";
         el("m-verdict").textContent =
@@ -673,7 +673,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
 
   // crypto.subtle exists only in a secure context, so opening this file directly with
   // file:// leaves it undefined and the demo would sit on a dash, looking broken rather
-  // than explaining itself. Over https — or http://localhost — it works.
+  // than explaining itself. Over https, or over http://localhost, it works.
   if (typeof crypto === "undefined" || crypto.subtle === undefined) {
     el("m-out").textContent = "BYTE1|" + el("m-invoice").value + "|………";
     el("m-verdict").className = "verdict no";

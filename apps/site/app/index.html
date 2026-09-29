@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Byte — Dashboard</title>
+<title>Byte Dashboard</title>
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='30' y='14' width='40' height='72' rx='20' fill='%23ff9a6a'/></svg>">
 <style>
@@ -232,7 +232,7 @@
       <div class="banner" id="dash-banner">
         <strong>Not connected.</strong>
         Connect a wallet to see live data. Byte reads balances and verifies payments with a
-        <strong>viewing key</strong> — it never needs, and never asks for, a spending key.
+        <strong>viewing key</strong>: it never needs, and never asks for, a spending key.
       </div>
 
       <div class="cards">
@@ -269,7 +269,7 @@
           </p>
           <p>
             Spending needs a signer. The MetaMask snap signs a <strong>PCZT</strong>, a
-            partially created transaction — Byte builds it, your wallet signs it, and the key
+            partially created transaction: Byte builds it, your wallet signs it, and the key
             never leaves the wallet. Connecting <code>byte-walletd</code> instead gives full
             spend capability, because that daemon is yours and runs on your machine.
           </p>
@@ -315,8 +315,8 @@
         <div class="body">
           <p>
             There is no wallet-connect standard for Zcash. <code>window.zconnect</code> has
-            been <em>proposed</em> — the author calls it “a rough/draft API… not a final
-            design” — and no wallet implements it. WalletConnect namespaces must be CAIP-2,
+            been <em>proposed</em>. Its author calls it “a rough/draft API… not a final
+            design”, and no wallet implements it. WalletConnect namespaces must be CAIP-2,
             and Zcash has no registered CAIP-2 namespace; a ZCG grant to build that support
             was approved on 31 August 2026 with milestones running into late 2027.
           </p>
@@ -329,7 +329,7 @@
           <p>
             What every one of them <em>does</em> support is <strong>ZIP-321</strong>: a
             payment URI carrying address, amount and memo. Byte emits one with every invoice,
-            so any wallet here can pay a Byte invoice today — it just cannot report back.
+            so any wallet here can pay a Byte invoice today: it just cannot report back.
           </p>
         </div>
       </div>
@@ -341,8 +341,8 @@
         <header><h2>Resolve an agent</h2></header>
         <div class="body">
           <p>
-            A Byte Agent Card is the one place an agent publishes an identity — agent ID,
-            endpoint, a Byte-accepting address, and the schemes it accepts — signed with
+            A Byte Agent Card is the one place an agent publishes an identity: agent ID,
+            endpoint, a Byte-accepting address, and the schemes it accepts. It is signed with
             Ed25519 and served at
             <code>/.well-known/byte-agent.json</code>.
           </p>
@@ -366,7 +366,7 @@
         <div class="body">
           <p>
             The signature is checked in your browser with Web Crypto. A valid signature proves
-            only that the holder of that key made these claims — not that the agent is
+            only that the holder of that key made these claims, not that the agent is
             trustworthy, that it controls the endpoint, or that it can spend from the address.
             Binding a key to a real-world identity is outside Byte's scope, and the card format
             does not pretend otherwise.
@@ -396,7 +396,7 @@
       <button class="option" id="opt-snap">
         <span class="t">MetaMask &middot; Zcash Shielded Wallet <span class="tag hot" id="snap-state">checking…</span></span>
         <span class="d">
-          ChainSafe's snap. Byte requests a <strong>viewing key</strong> — it can read your
+          ChainSafe's snap. Byte requests a <strong>viewing key</strong>: it can read your
           payments and verify invoices, and cannot spend.
         </span>
       </button>
@@ -889,7 +889,7 @@
 
   /**
    * The canonical encoding from packages/registry/src/card.ts: a domain tag and the fields
-   * in a fixed order, joined by a null byte. Not JSON.stringify — key order and escaping are
+   * in a fixed order, joined by a null byte. Not JSON.stringify: key order and escaping are
    * engine details, and a signature is only meaningful over bytes both sides reproduce.
    */
   function canonicalCard(card) {
