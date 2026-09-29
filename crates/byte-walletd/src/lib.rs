@@ -12,5 +12,8 @@
 //! say that. Verification here establishes that a note was received, in which pool, for
 //! how much, carrying which memo — nothing stronger.
 
+pub mod api;
+pub mod config;
 pub mod keys;
 pub mod memo;
+pub mod state;
