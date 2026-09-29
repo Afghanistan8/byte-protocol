@@ -517,7 +517,7 @@
   });
 
   /* ------------------------------------------------------------------- modal */
-  function openModal() { el("scrim").classList.add("on"); detectNoir(); detectSnap(); }
+  function openModal() { el("scrim").classList.add("on"); watchForNoir(); detectSnap(); }
   function closeModal() { el("scrim").classList.remove("on"); }
 
   el("connect").addEventListener("click", openModal);
@@ -534,13 +534,26 @@
    * v0.1.26, which is what makes it usable for Byte at all.
    */
 
+  /**
+   * Noir namespaces its provider: window.noirwallet is { isNoirWallet, version, zcash },
+   * and `request` lives on `.zcash`, not on the top level. Reaching for
+   * window.noirwallet.request() silently gets undefined and the click does nothing, which
+   * is exactly how this failed the first time.
+   */
   function noir() {
-    return typeof window !== "undefined" && window.noirwallet ? window.noirwallet : null;
+    if (typeof window === "undefined") return null;
+    var root = window.noirwallet;
+    if (!root || !root.zcash || typeof root.zcash.request !== "function") return null;
+    return root.zcash;
+  }
+
+  function noirVersion() {
+    return (window.noirwallet && window.noirwallet.version) || null;
   }
 
   function noirRequest(method, params) {
     var provider = noir();
-    if (!provider) return Promise.reject(new Error("Noir is not installed"));
+    if (!provider) return Promise.reject(new Error("Noir is not available on this page"));
     return provider.request(
       params === undefined ? { method: method } : { method: method, params: params }
     );
@@ -550,14 +563,29 @@
     var badge = el("noir-state");
     if (!noir()) {
       badge.className = "tag no";
-      badge.textContent = "Not installed";
+      badge.textContent = "Not detected";
       el("opt-noir").disabled = true;
       return false;
     }
     badge.className = "tag hot";
-    badge.textContent = "Detected";
+    var v = noirVersion();
+    badge.textContent = v ? "Detected " + v : "Detected";
     el("opt-noir").disabled = false;
     return true;
+  }
+
+  /**
+   * An extension injects its provider on its own schedule, often after this script has
+   * already run. Detecting once on load therefore reports "not installed" for a wallet
+   * that is merely a few hundred milliseconds late. Poll briefly, then stop.
+   */
+  function watchForNoir() {
+    if (detectNoir()) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      if (detectNoir() || tries > 30) clearInterval(timer);
+    }, 200);
   }
 
   el("opt-noir").addEventListener("click", function () {
@@ -574,9 +602,12 @@
       })
       .then(function () { setTimeout(closeModal, 1400); })
       .catch(function (error) {
+        var message = error && error.message ? error.message : String(error);
+        var code = error && error.code !== undefined ? " (code " + error.code + ")" : "";
         note(
-          "Noir refused or is unavailable: " +
-            escapeHtml(error && error.message ? error.message : "unknown error"),
+          "Noir did not connect" + escapeHtml(code) + ": " + escapeHtml(message) +
+            "<br><br>If no approval window appeared, check the Noir extension is unlocked " +
+            "and that this site is not already blocked in its connected-sites list.",
           "bad"
         );
       });
@@ -923,7 +954,7 @@
   });
 
   renderWallets();
-  detectNoir();
+  watchForNoir();
   detectSnap();
 })();
 </script>
