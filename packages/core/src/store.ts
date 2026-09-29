@@ -1,9 +1,12 @@
 /**
  * Storage interfaces.
  *
- * Byte ships a memory store for tests and development, and a Redis store for anything
- * that must survive a restart. Both satisfy these interfaces, and both are held to the
- * same test suite.
+ * Byte ships one implementation: an in-memory store, for tests, development and
+ * single-process deployments that can tolerate losing outstanding invoices on restart.
+ *
+ * A durable store — Redis, Postgres, anything — is a matter of satisfying these
+ * interfaces, and the one thing an implementation must not get wrong is `consume`. See
+ * the note on it below, and docs/ROADMAP.md for why the durable store is still Planned.
  *
  * See docs/SPEC.md §7.
  */

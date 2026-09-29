@@ -344,7 +344,7 @@
             A Byte Agent Card is the one place an agent publishes an identity — agent ID,
             endpoint, a Byte-accepting address, and the schemes it accepts — signed with
             Ed25519 and served at
-            <code>/.well-known/byte-agent-card</code>.
+            <code>/.well-known/byte-agent.json</code>.
           </p>
           <p>
             Identity is public here <em>because the agent chose to publish it</em>. Settlement
@@ -910,15 +910,24 @@
 
     out.innerHTML = '<div class="note"><span class="spin">◠</span> Fetching the card…</div>';
 
-    var url;
-    try { url = new URL("/.well-known/byte-agent-card", origin).toString(); }
+    // Canonical path first, then the name Byte published before it settled on .json.
+    // A 404 is the only thing worth retrying elsewhere.
+    var paths = ["/.well-known/byte-agent.json", "/.well-known/byte-agent-card"];
+    var urls = [];
+    try {
+      for (var i = 0; i < paths.length; i++) urls.push(new URL(paths[i], origin).toString());
+    }
     catch (e) { out.innerHTML = '<div class="note bad">That is not a valid origin.</div>'; return; }
 
-    fetch(url, { headers: { accept: "application/json" } })
-      .then(function (r) {
+    function fetchCard(index) {
+      return fetch(urls[index], { headers: { accept: "application/json" } }).then(function (r) {
+        if (r.status === 404 && index + 1 < urls.length) return fetchCard(index + 1);
         if (!r.ok) throw new Error("the origin returned HTTP " + r.status);
         return r.json();
-      })
+      });
+    }
+
+    fetchCard(0)
       .then(function (card) {
         if (!crypto.subtle) throw new Error("Web Crypto is unavailable in this context");
         return crypto.subtle

@@ -127,7 +127,11 @@ to anyone.
 
 ### 5.1 Confirmation latency and zero-confirmation risk
 
-The Zcash block target is 75 seconds (ZIP 208). `minConfirmations: 1` costs roughly that.
+The Zcash block target is 75 seconds today (ZIP 208) and 25 seconds from NU7 onwards
+(ZIP 218). `minConfirmations: 1` costs roughly one block either way. Byte reads the
+spacing from the network and height rather than assuming one — see
+`blockTargetSeconds` in `packages/core/src/network.ts` — because testnet activates NU7
+a month before mainnet, so for that month the two chains genuinely differ.
 
 `minConfirmations: 0` is permitted only when explicitly configured. At zero confirmations a
 payment can be reorged away *after* the resource has been served. Byte does not prevent
@@ -143,8 +147,12 @@ the linkage Byte exists to avoid.
 ### 5.3 In-memory stores do not survive a restart
 
 The memory invoice store loses consumed-invoice records on restart, which re-opens the
-replay window for any invoice still within its expiry. Use the Redis store for anything
-that matters.
+replay window for any invoice still within its expiry.
+
+Byte does **not** currently ship a durable store, so this is a live limitation rather than
+a configuration mistake: run a single process, keep invoice TTLs short, and treat a restart
+as re-opening the replay window for every invoice still inside its expiry. A durable store
+is Planned — see docs/ROADMAP.md.
 
 ### 5.4 Byte's verification is not a consensus judgement
 

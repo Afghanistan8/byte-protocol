@@ -43,8 +43,17 @@ export interface RailQuoteRequest {
 
 export interface RailQuote {
   railId: string;
-  /** What the funder sends value to. */
-  depositAddress: string;
+  /**
+   * What the funder sends value to.
+   *
+   * **Absent on a dry quote**, and that is not an error. A dry quote is a price check: no
+   * deposit address is reserved because nothing is expected to arrive. 1Click documents
+   * exactly this — a dry response omits `depositAddress`, `timeWhenInactive` and
+   * `deadline` — and a rail that demanded one would make its own default unusable.
+   *
+   * A caller that intends to move value asks for `dry: false` and gets an address.
+   */
+  depositAddress?: string;
   /** Memo the deposit must carry, when the rail requires one. */
   depositMemo?: string;
   /** Amount to send, in the source asset's smallest unit. */

@@ -70,11 +70,22 @@ pub enum ChainError {
     Prover(String),
     #[error("send failed: {0}")]
     Send(String),
+    /// The proposal would have drawn on a pool Byte will not spend from.
+    ///
+    /// Distinct from `Send` because it is a *refusal*, not a failure: nothing went wrong,
+    /// and the caller's spend guard needs to tell the two apart to refund correctly.
+    #[error("{0}")]
+    WrongPoolSource(String),
 }
 
 impl From<ChainError> for WalletStateError {
     fn from(error: ChainError) -> Self {
-        WalletStateError::ChainAccess(error.to_string())
+        match error {
+            // Preserve the refusal across the boundary. Flattening it into `ChainAccess`
+            // would report a deliberate policy decision as a chain outage.
+            ChainError::WrongPoolSource(message) => WalletStateError::WrongPoolSource(message),
+            other => WalletStateError::ChainAccess(other.to_string()),
+        }
     }
 }
 
@@ -397,6 +408,66 @@ fn pool_name(pool: zcash_protocol::PoolType) -> &'static str {
     }
 }
 
+/// Refuse a proposal that would be funded from anywhere but Ironwood.
+///
+/// Walks every step of the proposal and rejects on the first non-Ironwood input. Runs
+/// before proving, signing or broadcasting, so a refusal costs nothing and puts nothing
+/// on the chain — the same property the spend guard has on the TypeScript side.
+///
+/// Reported as `wrong_pool_source`, which `WalletdWallet` already maps to a
+/// `BytePayerError` the spend guard can refund against.
+/// The walk. Two documented accessors per step, and the decision itself lives in
+/// [`ironwood_only_refusal`] so it can be tested exhaustively without synthesising a
+/// `Proposal` — which would need a real Orchard note, an anchor and a balance, and would
+/// test the test harness more than the policy.
+fn assert_ironwood_funded<FeeRuleT, NoteRefT>(
+    proposal: &zcash_client_backend::proposal::Proposal<FeeRuleT, NoteRefT>,
+) -> Result<(), ChainError> {
+    for step in proposal.steps() {
+        let pools = step
+            .shielded_inputs()
+            .into_iter()
+            .flat_map(|inputs| inputs.notes().iter())
+            .map(|note| note.note().pool());
+
+        if let Some(message) = ironwood_only_refusal(step.transparent_inputs().len(), pools) {
+            return Err(ChainError::WrongPoolSource(message));
+        }
+    }
+    Ok(())
+}
+
+/// The policy: Ironwood in, or nothing.
+///
+/// Returns the refusal message, or `None` when every input is Ironwood. Transparent is
+/// reported before shielded because it is both the likelier mistake and the worse one:
+/// it publishes an amount that was never shielded to begin with.
+fn ironwood_only_refusal(
+    transparent_inputs: usize,
+    shielded_pools: impl Iterator<Item = ShieldedPool>,
+) -> Option<String> {
+    if transparent_inputs > 0 {
+        return Some(format!(
+            "this payment would be funded from {transparent_inputs} transparent input(s). \
+             Byte will not spend transparent value: the amount crossing into the shielded \
+             pool would be public. Shield the funds first, then pay."
+        ));
+    }
+
+    for pool in shielded_pools {
+        if pool != ShieldedPool::Ironwood {
+            return Some(format!(
+                "this payment would be funded from a {} note. Byte spends Ironwood notes \
+                 only: ZIP 318 makes the net amount crossing between pools public, which \
+                 is the disclosure Byte exists to prevent.",
+                pool_name(zcash_protocol::PoolType::Shielded(pool))
+            ));
+        }
+    }
+
+    None
+}
+
 fn shielded_pool(pool: zcash_protocol::PoolType) -> Option<ShieldedPool> {
     match pool {
         zcash_protocol::PoolType::Shielded(p) => Some(p),
@@ -418,6 +489,69 @@ fn now_secs() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What these cover, and what they do not.
+    ///
+    /// `ironwood_only_refusal` is the decision, and it is covered exhaustively below —
+    /// every variant of `ShieldedPool`, plus the transparent case and the precedence
+    /// between them. `assert_ironwood_funded` is the walk over a real `Proposal`, and it
+    /// is not unit-tested: synthesising a `Proposal` needs a constructed Orchard note, an
+    /// anchor, a transaction request and a balance, and a test built on that scaffolding
+    /// mostly proves the scaffolding. The walk is two accessors the compiler checks, and
+    /// `docs/TESTNET_RUNS.md` covers it against a real chain.
+    #[test]
+    fn ironwood_notes_are_the_only_acceptable_source() {
+        assert_eq!(
+            ironwood_only_refusal(0, [ShieldedPool::Ironwood].into_iter()),
+            None
+        );
+        assert_eq!(
+            ironwood_only_refusal(0, [ShieldedPool::Ironwood; 4].into_iter()),
+            None
+        );
+        // No inputs at all is not this function's problem to diagnose; the builder will
+        // already have failed with an insufficient-funds error before reaching here.
+        assert_eq!(ironwood_only_refusal(0, std::iter::empty()), None);
+    }
+
+    #[test]
+    fn every_other_pool_is_refused_by_name() {
+        for pool in [ShieldedPool::Sapling, ShieldedPool::Orchard] {
+            let refusal = ironwood_only_refusal(0, [pool].into_iter())
+                .unwrap_or_else(|| panic!("{pool:?} should have been refused"));
+            // The operator has to be able to tell *which* pool their money is stuck in.
+            assert!(
+                refusal.contains(pool_name(zcash_protocol::PoolType::Shielded(pool))),
+                "refusal should name the pool: {refusal}"
+            );
+            assert!(refusal.contains("ZIP 318"), "refusal should cite why: {refusal}");
+        }
+    }
+
+    #[test]
+    fn a_single_bad_note_among_good_ones_still_refuses() {
+        // The dangerous case: the selector tops an Ironwood spend up from elsewhere, and
+        // the shortfall crossing the turnstile is what becomes public.
+        let pools = [
+            ShieldedPool::Ironwood,
+            ShieldedPool::Ironwood,
+            ShieldedPool::Orchard,
+        ];
+        assert!(ironwood_only_refusal(0, pools.into_iter()).is_some());
+    }
+
+    #[test]
+    fn transparent_inputs_are_refused_and_reported_first() {
+        let refusal = ironwood_only_refusal(1, [ShieldedPool::Ironwood].into_iter())
+            .expect("a transparent input must be refused");
+        assert!(refusal.contains("transparent"), "{refusal}");
+
+        // Transparent wins the report even when a shielded input is also wrong: it is the
+        // likelier mistake, and it publishes value that was never shielded at all.
+        let both = ironwood_only_refusal(2, [ShieldedPool::Sapling].into_iter())
+            .expect("must be refused");
+        assert!(both.contains("2 transparent input(s)"), "{both}");
+    }
 
     #[test]
     fn pool_names_match_the_typescript_union() {
@@ -576,6 +710,18 @@ impl LightwalletdChain {
             None,
         )
         .map_err(|e| ChainError::Send(format!("building proposal: {e}")))?;
+
+        // Refuse anything that is not funded entirely from Ironwood, before it is proved,
+        // signed or broadcast.
+        //
+        // This check is not belt-and-braces. `propose_standard_transfer_to_address` takes
+        // no parameter restricting *source* pools — `fallback_change_pool` governs change
+        // only — so its input selector is free to reach for a transparent UTXO or a
+        // leftover Sapling note to make up an amount. Byte's wallet contract says
+        // implementations MUST NOT do that: crossing pools publishes the net amount
+        // crossing (ZIP 318), which is the disclosure the whole protocol exists to avoid.
+        // Without this, that guarantee held only in the mock.
+        assert_ironwood_funded(&proposal)?;
 
         let fee_zat = u64::from(proposal.steps().last().balance().fee_required());
 

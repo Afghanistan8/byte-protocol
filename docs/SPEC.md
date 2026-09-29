@@ -197,8 +197,12 @@ interface exists to make the atomic step explicit.
 
 `minConfirmations: 0` is permitted only when explicitly configured. At zero confirmations
 a payment can be reorged away after the resource has been served. Byte does not prevent
-this and does not pretend to; it is the operator's risk to take. The Zcash block target is
-75 seconds, so `minConfirmations: 1` costs roughly that in latency.
+this and does not pretend to; it is the operator's risk to take. `minConfirmations: 1`
+costs roughly one block in latency: 75 seconds before NU7, 25 after.
+
+A payee MUST derive the `Retry-After` it reports from the network and height it is
+actually on, not from a fixed number. Block spacing is a consensus parameter and
+ZIP 218 changes it.
 
 A verifier's acceptance is **not** a consensus judgement. librustzcash states plainly that
 its APIs do not check consensus validity; final validity comes from a node. Byte repeats

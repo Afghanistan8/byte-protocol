@@ -221,17 +221,26 @@ export class NearIntentsRail implements Rail {
     };
 
     const quote = response.quote;
-    if (quote?.depositAddress === undefined) {
-      throw new ByteProtocolError("1Click returned no deposit address");
+
+    // A dry response has no deposit address, by design: 1Click reserves one only when
+    // value is actually expected. Demanding one here made the rail's own default — dry —
+    // throw against the live API, while every mock supplied one and hid it.
+    if (!dry && quote?.depositAddress === undefined) {
+      throw new ByteProtocolError(
+        "1Click returned no deposit address for a live quote; nothing can be funded without one",
+      );
     }
 
     return {
       railId: this.railId,
-      depositAddress: quote.depositAddress,
-      ...(quote.depositMemo !== undefined ? { depositMemo: quote.depositMemo } : {}),
-      amountIn: quote.amountIn ?? "0",
-      amountOutZat: quote.amountOut ?? request.amountOutZat,
-      deadline: quote.deadline ?? body.deadline,
+      ...(quote?.depositAddress !== undefined
+        ? { depositAddress: quote.depositAddress }
+        : {}),
+      ...(quote?.depositMemo !== undefined ? { depositMemo: quote.depositMemo } : {}),
+      amountIn: quote?.amountIn ?? "0",
+      amountOutZat: quote?.amountOut ?? request.amountOutZat,
+      // A dry response omits `deadline` too, so fall back to the one we asked for.
+      deadline: quote?.deadline ?? body.deadline,
       dry,
       transparentLeg: this.transparentLeg,
       raw: response,

@@ -13,8 +13,10 @@ import {
   BytePaymentError,
   isAcceptedPool,
   parseZat,
+  retryAfterSeconds,
   timingSafeEqual,
   verifyMemo,
+  type ByteNetwork,
   type InvoiceStore,
   type PaymentReason,
   type StoredInvoice,
@@ -48,8 +50,15 @@ export interface VerificationFailure {
 
 export type VerificationResult = VerificationSuccess | VerificationFailure;
 
-/** Suggested retry delay while a payment is unconfirmed: roughly one block. */
-export const RETRY_AFTER_SECONDS = 75;
+/**
+ * Suggested retry delay while a payment is unconfirmed: roughly one block.
+ *
+ * Derived per network and height rather than fixed. It used to be a literal 75, which
+ * ZIP 218 makes wrong — by a factor of three — the moment NU7 activates.
+ */
+function retryAfter(network: ByteNetwork, height?: number): number {
+  return retryAfterSeconds(network, height === undefined ? {} : { height });
+}
 
 function fail(
   reason: PaymentReason,
@@ -101,7 +110,7 @@ export class PaymentVerifier {
       // Not seen is not the same as not paid. The payer may have broadcast a moment ago,
       // or the wallet may be a block behind.
       return fail("pending", "transaction not seen yet", {
-        retryAfterSeconds: RETRY_AFTER_SECONDS,
+        retryAfterSeconds: retryAfter(this.#wallet.network),
       });
     }
 
@@ -146,7 +155,9 @@ export class PaymentVerifier {
       return fail(
         "pending",
         `${settling.confirmations} of ${invoice.minConfirmations} confirmations`,
-        { retryAfterSeconds: RETRY_AFTER_SECONDS },
+        // The note's own height, when the backend reports one, is the most accurate
+        // thing to date the spacing against.
+        { retryAfterSeconds: retryAfter(this.#wallet.network, settling.height) },
       );
     }
 

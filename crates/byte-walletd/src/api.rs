@@ -60,6 +60,9 @@ impl From<WalletStateError> for ApiFailure {
             WalletStateError::ChainAccess(_) => (StatusCode::BAD_GATEWAY, "chain_unavailable"),
             WalletStateError::NoChain => (StatusCode::SERVICE_UNAVAILABLE, "no_chain"),
             WalletStateError::Send(_) => (StatusCode::BAD_GATEWAY, "send_failed"),
+            // 409, not 502: nothing upstream failed. The wallet holds value, and Byte is
+            // declining to spend the wrong kind of it.
+            WalletStateError::WrongPoolSource(_) => (StatusCode::CONFLICT, "wrong_pool_source"),
         };
         ApiFailure(status, ApiError::new(code, error.to_string()))
     }

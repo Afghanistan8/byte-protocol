@@ -8,6 +8,7 @@ import {
   signAgentCard,
   verifyAgentCard,
   WELL_KNOWN_PATH,
+  LEGACY_WELL_KNOWN_PATH,
   type AgentCardBody,
 } from "./card.js";
 import { resolveAgentCard, serializeAgentCard } from "./resolver.js";
@@ -141,9 +142,11 @@ describe("acceptsByte", () => {
 });
 
 describe("resolveAgentCard", () => {
-  async function serve(payload: string, status = 200) {
+  async function serve(payload: string, status = 200, path = WELL_KNOWN_PATH) {
+    const requested: string[] = [];
     const server = createServer((req, res) => {
-      if (req.url !== WELL_KNOWN_PATH) {
+      requested.push(req.url ?? "");
+      if (req.url !== path) {
         res.writeHead(404);
         res.end();
         return;
@@ -156,6 +159,7 @@ describe("resolveAgentCard", () => {
     if (address === null || typeof address === "string") throw new Error("no address");
     return {
       origin: `http://127.0.0.1:${address.port}`,
+      requested,
       close: () => new Promise<void>((resolve) => server.close(() => resolve())),
     };
   }
@@ -166,6 +170,52 @@ describe("resolveAgentCard", () => {
     const s = await serve(serializeAgentCard(card));
     try {
       expect(await resolveAgentCard(s.origin)).toMatchObject({ agentId: "agent-alpha" });
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("falls back to the legacy path when the canonical one 404s", async () => {
+    // The canonical name moved to byte-agent.json. An agent that published under the old
+    // name should not silently become unresolvable, so the resolver tries both.
+    const { secretKey } = newAgentKey();
+    const card = signAgentCard(body(), secretKey);
+    const s = await serve(serializeAgentCard(card), 200, LEGACY_WELL_KNOWN_PATH);
+    try {
+      expect(await resolveAgentCard(s.origin)).toMatchObject({ agentId: "agent-alpha" });
+      // Canonical first, legacy only after it 404s.
+      expect(s.requested).toEqual([WELL_KNOWN_PATH, LEGACY_WELL_KNOWN_PATH]);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("does not try the legacy path when the canonical one answers", async () => {
+    const { secretKey } = newAgentKey();
+    const card = signAgentCard(body(), secretKey);
+    const s = await serve(serializeAgentCard(card));
+    try {
+      await resolveAgentCard(s.origin);
+      expect(s.requested).toEqual([WELL_KNOWN_PATH]);
+    } finally {
+      await s.close();
+    }
+  });
+
+  it("does not retry elsewhere when a card is present but bad", async () => {
+    // A 404 is the only thing that means "look somewhere else". A card that is served and
+    // fails verification must be reported, not quietly replaced by whatever the legacy
+    // path happens to hold.
+    const { secretKey } = newAgentKey();
+    const card = signAgentCard(body(), secretKey);
+    const s = await serve(
+      JSON.stringify({ ...card, agentId: "someone-else" }),
+      200,
+      WELL_KNOWN_PATH,
+    );
+    try {
+      await expect(resolveAgentCard(s.origin)).rejects.toThrow(/failed verification/);
+      expect(s.requested).toEqual([WELL_KNOWN_PATH]);
     } finally {
       await s.close();
     }

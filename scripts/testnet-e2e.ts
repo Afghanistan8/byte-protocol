@@ -21,7 +21,7 @@
  */
 
 import { createServer } from "node:http";
-import { NETWORK_TESTNET, newMemoSecret } from "@byte-protocol/core";
+import { NETWORK_TESTNET, newMemoSecret, retryAfterSeconds } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
 import { InvoiceIssuer, PaymentVerifier } from "@byte-protocol/server";
 import { SpendGuard } from "@byte-protocol/client";
@@ -71,9 +71,11 @@ async function waitForConfirmations(
     }
     if (best >= target) return best;
 
-    // The Zcash block target is 75 seconds (ZIP 208), so polling faster than this only
-    // loads the light server without finding anything new.
-    await new Promise((resolve) => setTimeout(resolve, 20_000));
+    // One block, read from the network rather than assumed: 75 seconds under ZIP 208,
+    // 25 under NU7's ZIP 218. Polling faster than a block arrives only loads the light
+    // server without finding anything new.
+    const wait = retryAfterSeconds(NETWORK_TESTNET) * 1000;
+    await new Promise((resolve) => setTimeout(resolve, wait));
   }
 
   throw new Error(`transaction ${txid} did not reach ${target} confirmations in time`);

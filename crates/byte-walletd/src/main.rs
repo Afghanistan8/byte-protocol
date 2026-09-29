@@ -17,8 +17,14 @@ use byte_walletd::{
 
 /// How long to wait between sync passes once caught up.
 ///
-/// The Zcash block target is 75 seconds (ZIP 208), so polling much faster than this only
-/// adds load on a public light server without finding anything new.
+/// Block spacing is 75 seconds today (ZIP 208) and 25 under NU7 (ZIP 218), so this sits
+/// comfortably inside the shorter of the two: at 30 seconds the sidecar finds roughly
+/// every block after NU7 and idles harmlessly before it. It is deliberately *not* derived
+/// from the spacing — a sync loop only needs to be fast enough, and tying it to a
+/// consensus parameter would make a wrong height an outage rather than a small delay.
+///
+/// The one place spacing genuinely matters is the `Retry-After` a payer is handed, and
+/// that is derived per network and height in `packages/core/src/network.ts`.
 const SYNC_INTERVAL: Duration = Duration::from_secs(30);
 
 /// How long to wait before retrying after a failed sync.

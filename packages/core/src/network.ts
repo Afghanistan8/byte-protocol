@@ -49,12 +49,77 @@ export const NU6_3_ACTIVATION_HEIGHT = {
 export const NU6_3_BRANCH_ID = 0x37a5165b;
 
 /**
- * Target seconds between blocks, unchanged since Blossom (ZIP 208).
+ * Target seconds between blocks, by consensus epoch.
  *
- * Used only to derive human-facing latency estimates and `Retry-After` hints. It is a
- * target, not a guarantee: individual block intervals vary widely.
+ * **Do not hardcode either of these.** Block spacing is a consensus parameter and it is
+ * about to change: ZIP 208 set 75 seconds at Blossom, and ZIP 218 takes it to 25 under
+ * NU7. Anything that derives a wait, a timeout or a `Retry-After` from a literal 75 becomes
+ * silently wrong — three times too slow — the moment NU7 activates, and it activates on
+ * testnet before it activates on mainnet, so the two networks disagree for a month.
+ *
+ * Read it through {@link blockTargetSeconds}, which takes the height.
  */
-export const BLOCK_TARGET_SECONDS = 75;
+export const BLOCK_TARGET_SECONDS_PRE_NU7 = 75;
+export const BLOCK_TARGET_SECONDS_NU7 = 25;
+
+/**
+ * NU7 consensus branch ID.
+ *
+ * `0x77190AD8`, as exposed by `zcash_protocol`. Unlike the heights below, this is settled.
+ */
+export const NU7_BRANCH_ID = 0x77190ad8;
+
+/**
+ * NU7 activation heights.
+ *
+ * **Neither of these is final, and the mainnet one is deliberately absent.** The schedule
+ * is testnet on 6 October 2026, a go/no-go on 20 October, mainnet on 5 November, and the
+ * activation height is only fixed at that go/no-go. The testnet figure below is the
+ * published *estimate*; the mainnet figure does not exist yet, and inventing one would put
+ * a number Byte made up in the path that decides how long a payer waits.
+ *
+ * `undefined` reads as "not activated as far as Byte knows", which falls back to the
+ * pre-NU7 spacing — the slower of the two, and therefore the forgiving direction to be
+ * wrong in: a client waits longer than it needs to rather than hammering a light server
+ * for a block that has not happened.
+ *
+ * A deployment that knows better should pass `height` explicitly, or override this once
+ * the heights are final. See docs/TOOLCHAIN.md for the dates and sources.
+ */
+export const NU7_ACTIVATION_HEIGHT: Record<ByteNetwork, number | undefined> = {
+  [NETWORK_MAINNET]: undefined,
+  /** Estimate, not consensus. Pending the 20 October 2026 go/no-go. */
+  [NETWORK_TESTNET]: 4_386_000,
+};
+
+/**
+ * Target seconds between blocks on `network` at `height`.
+ *
+ * Without a height this reports the spacing in force *today* on that network, which is
+ * what a caller that has no chain connection can honestly say. With one, it reports the
+ * spacing that applies at that height.
+ */
+export function blockTargetSeconds(network: ByteNetwork, height?: number): number {
+  const nu7 = NU7_ACTIVATION_HEIGHT[network];
+  if (nu7 === undefined) return BLOCK_TARGET_SECONDS_PRE_NU7;
+  if (height === undefined) return BLOCK_TARGET_SECONDS_PRE_NU7;
+  return height >= nu7 ? BLOCK_TARGET_SECONDS_NU7 : BLOCK_TARGET_SECONDS_PRE_NU7;
+}
+
+/**
+ * How long to wait before asking again about an unconfirmed payment.
+ *
+ * One block, floored at ten seconds. The floor matters more after NU7 than before it: at
+ * 25-second spacing a client that retries on the nose will mostly catch the same
+ * unconfirmed state, and hammering a light server is neither polite nor faster.
+ */
+export function retryAfterSeconds(
+  network: ByteNetwork,
+  options: { height?: number; blocks?: number } = {},
+): number {
+  const blocks = options.blocks ?? 1;
+  return Math.max(10, blockTargetSeconds(network, options.height) * blocks);
+}
 
 export function isByteNetwork(value: unknown): value is ByteNetwork {
   return typeof value === "string" && (NETWORKS as readonly string[]).includes(value);

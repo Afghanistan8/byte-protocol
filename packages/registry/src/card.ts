@@ -34,8 +34,25 @@ import { ed25519 } from "@noble/curves/ed25519.js";
  */
 export const CARD_DOMAIN = "byte-agent-card-v1";
 
-/** Where a card is published, relative to an agent's origin. */
-export const WELL_KNOWN_PATH = "/.well-known/byte-agent-card";
+/**
+ * Where a card is published, relative to an agent's origin.
+ *
+ * `.json` because the response is JSON and a `.well-known` name that says so is easier to
+ * serve correctly from a static host, which is where most of these will live.
+ */
+export const WELL_KNOWN_PATH = "/.well-known/byte-agent.json";
+
+/**
+ * The path Byte published before the `.json` name was settled on.
+ *
+ * A resolver still tries it, so an agent that published under the old name keeps
+ * resolving. Publishers should serve the canonical path; serving both costs one alias and
+ * means nobody's card silently stops being found.
+ */
+export const LEGACY_WELL_KNOWN_PATH = "/.well-known/byte-agent-card";
+
+/** Every path a resolver will try, canonical first. */
+export const WELL_KNOWN_PATHS = [WELL_KNOWN_PATH, LEGACY_WELL_KNOWN_PATH] as const;
 
 export const AgentCardBodySchema = z.object({
   /** Stable identifier the agent chooses for itself. */

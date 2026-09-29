@@ -2,8 +2,8 @@
  * In-memory stores.
  *
  * For tests, development, and single-process deployments that can tolerate losing
- * outstanding invoices on restart. Anything else should use the Redis store — see the
- * warning on `MemoryInvoiceStore`.
+ * outstanding invoices on restart. Anything else needs a durable store, which Byte does
+ * not yet ship — see the warning on `MemoryInvoiceStore` and docs/ROADMAP.md.
  */
 
 import {

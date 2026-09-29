@@ -75,7 +75,7 @@ consequence of a default.
 **No live funding has been performed through this rail.** It is implemented and tested
 against mocked HTTP shaped from the [1Click OpenAPI
 document](https://1click.chaindefuser.com/docs/v0/openapi.yaml), covering all seven documented
-statuses, signature of the quote request, and the failure paths.
+statuses, the shape of the quote request body, and the failure paths.
 
 ### Fees
 

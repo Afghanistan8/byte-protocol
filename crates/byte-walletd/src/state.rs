@@ -34,6 +34,9 @@ pub enum WalletStateError {
     NoChain,
     #[error("{0}")]
     Send(String),
+    /// Refused: the payment would have been funded from a pool Byte will not spend from.
+    #[error("{0}")]
+    WrongPoolSource(String),
 }
 
 /// An output received by this wallet, as reported to the TypeScript side.

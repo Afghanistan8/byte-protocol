@@ -22,7 +22,7 @@ How Byte is put together, and why the seams are where they are.
           │                   │                      │
           │            ┌──────┴──────┐               │
           │            │   stores    │               │
-          │            │ memory·redis│               │
+          │            │   memory    │               │
           │            └─────────────┘               │
           │                                          │
   ┌───────┴──────────────────────────────────────────┴──────────┐
@@ -150,7 +150,7 @@ mysteriously failing verification.
 | `server` | `byteGate()`, invoice issuance, verification. |
 | `facilitator` | View-only verification as a service. |
 | `registry` | Agent Cards: schema, signing, resolution. |
-| `stores` | Memory and Redis implementations of the store interfaces. |
+| `stores` | The in-memory implementation of the store interfaces. A durable store is Planned. |
 | `adapters/*` | One per framework. Each proves a full pay → verify → serve loop against the mock. |
 | `rails/*` | Funding paths. Funds always end up shielded in Ironwood. |
 | `crates/byte-walletd` | The Rust sidecar. |

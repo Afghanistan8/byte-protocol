@@ -1,7 +1,7 @@
 /**
  * Resolving an agent's card from its origin.
  *
- * Fetches `/.well-known/byte-agent-card` and verifies the signature before returning
+ * Fetches `/.well-known/byte-agent.json` and verifies the signature before returning
  * anything. An unverified card is never handed to a caller, because the only thing a
  * caller is going to do with it is decide where to send money.
  */
@@ -9,7 +9,7 @@
 import { ByteProtocolError } from "@byte-protocol/core";
 import {
   AgentCardSchema,
-  WELL_KNOWN_PATH,
+  WELL_KNOWN_PATHS,
   verifyAgentCard,
   type AgentCard,
 } from "./card.js";
@@ -35,12 +35,46 @@ const DEFAULT_MAX_BYTES = 64 * 1024;
 /**
  * Fetch and verify the card published at `origin`.
  *
- * Throws if the card is missing, malformed, oversized, or fails verification. There is no
- * "unverified" return value by design.
+ * Tries the canonical `.well-known` path first, then the legacy one, so an agent that
+ * published before the name was settled still resolves. A 404 on the first is the only
+ * thing that moves on to the second: any other failure — malformed, oversized, bad
+ * signature — is reported against the path that produced it rather than silently retried
+ * somewhere else.
+ *
+ * Throws if no path yields a card that verifies. There is no "unverified" return value by
+ * design: the only thing a caller does with a card is decide where to send money.
  */
 export async function resolveAgentCard(
   origin: string,
   options: ResolveOptions = {},
+): Promise<AgentCard> {
+  let notFound: ByteProtocolError | undefined;
+
+  for (const path of WELL_KNOWN_PATHS) {
+    try {
+      return await resolveAt(origin, path, options);
+    } catch (error) {
+      if (error instanceof CardNotFoundError) {
+        notFound ??= new ByteProtocolError(error.message);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw (
+    notFound ??
+    new ByteProtocolError(`no agent card found at ${origin}`)
+  );
+}
+
+/** Thrown internally when a path 404s, so the resolver knows it may try the next one. */
+class CardNotFoundError extends ByteProtocolError {}
+
+async function resolveAt(
+  origin: string,
+  wellKnownPath: string,
+  options: ResolveOptions,
 ): Promise<AgentCard> {
   const doFetch = options.fetch ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -48,7 +82,7 @@ export async function resolveAgentCard(
 
   let url: string;
   try {
-    url = new URL(WELL_KNOWN_PATH, origin).toString();
+    url = new URL(wellKnownPath, origin).toString();
   } catch (cause) {
     throw new ByteProtocolError(`not a valid origin: ${origin}`, { cause });
   }
@@ -68,6 +102,9 @@ export async function resolveAgentCard(
     clearTimeout(timer);
   }
 
+  if (response.status === 404) {
+    throw new CardNotFoundError(`${url} returned 404`);
+  }
   if (!response.ok) {
     throw new ByteProtocolError(`${url} returned ${response.status}`);
   }

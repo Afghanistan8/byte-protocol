@@ -130,6 +130,50 @@ describe("quoting", () => {
     expect((quoteCall?.body as { dry: boolean }).dry).toBe(true);
   });
 
+  it("survives a dry response that omits the deposit address", async () => {
+    // This is what the live API actually returns for `dry: true`: the OpenAPI states the
+    // response omits depositAddress, timeWhenInactive and deadline, because no address is
+    // reserved when nothing is expected to arrive.
+    //
+    // Every other mock in this file supplies a deposit address, which is precisely how the
+    // rail shipped with its own default path unable to work against the real service.
+    const api = mockApi({
+      quote: { quote: { amountIn: "1500000", amountOut: "10000000" } },
+    });
+    const r = new NearIntentsRail({
+      network: NETWORK_TESTNET,
+      recipientTransparentAddress: T_ADDR,
+      refundTo: REFUND_TO,
+      fetch: api.fetch,
+    });
+
+    const quote = await r.quote({ from: "nep141:base-usdc", amountOutZat: "10000000" });
+
+    expect(quote.dry).toBe(true);
+    expect(quote.depositAddress).toBeUndefined();
+    expect(quote.amountOutZat).toBe("10000000");
+    // The deadline falls back to the one we asked for, so a caller still sees a horizon.
+    expect(quote.deadline).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("refuses a live quote that comes back without a deposit address", async () => {
+    // The same missing field means something entirely different when the quote is live:
+    // there is nowhere to send the money, so failing loudly is the only safe answer.
+    const api = mockApi({
+      quote: { quote: { amountIn: "1500000", amountOut: "10000000" } },
+    });
+    const r = new NearIntentsRail({
+      network: NETWORK_TESTNET,
+      recipientTransparentAddress: T_ADDR,
+      refundTo: REFUND_TO,
+      fetch: api.fetch,
+    });
+
+    await expect(
+      r.quote({ from: "nep141:base-usdc", amountOutZat: "10000000", dry: false }),
+    ).rejects.toThrow(ByteProtocolError);
+  });
+
   it("can be asked for a live quote explicitly", async () => {
     const { rail: r, api } = rail();
     const quote = await r.quote({

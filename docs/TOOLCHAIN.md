@@ -19,7 +19,10 @@ All entries verified **2026-09-29** unless stated otherwise.
 | Orchard status | Sealed. No new Orchard outputs; withdraw-only through the ZIP 318 turnstile | [ZIP 258](https://zips.z.cash/zip-0258), [ZIP 2006](https://zips.z.cash/zip-2006) |
 | Pool-crossing visibility | "The net amount crossing between the pools is revealed on-chain." | [ZIP 318](https://zips.z.cash/zip-0318) |
 | Memo size | Fixed **512 bytes**, null-padded, ZIP 302 serialization | [zcash_protocol::memo::MemoBytes](https://docs.rs/zcash_protocol/0.10.6/zcash_protocol/memo/struct.MemoBytes.html) |
-| Block target | **75 seconds**, unchanged since Blossom (ZIP 208, block 653,600) | [ZIP 208](https://zips.z.cash/zip-0208) |
+| Block target, pre-NU7 | **75 seconds**, unchanged since Blossom (ZIP 208, block 653,600) | [ZIP 208](https://zips.z.cash/zip-0208) |
+| Block target, NU7 onwards | **25 seconds** | [ZIP 218](https://zips.z.cash/zip-0218) |
+| NU7 consensus branch ID | `0x77190AD8` | [librustzcash#3047](https://github.com/zcash/librustzcash/pull/3047) |
+| NU7 schedule | Testnet 6 Oct 2026 · go/no-go 20 Oct · mainnet 5 Nov 2026. Heights are **estimates** until the go/no-go; testnet ≈ 4,386,000, mainnet not yet published | [ebfull, NU7 timeline, 2026-09-17](https://forum.zcashcommunity.com/) |
 | Mainnet genesis hash | `00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08` | [chainparams.cpp:338](https://github.com/zcash/zcash/blob/master/src/chainparams.cpp) |
 | Testnet genesis hash | `05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38` | [chainparams.cpp:745](https://github.com/zcash/zcash/blob/master/src/chainparams.cpp) |
 
