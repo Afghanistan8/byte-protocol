@@ -520,7 +520,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
     </div>
     <div class="plate stat">
       <p class="big">0</p>
-      <p>protocol fee. No fee output, no treasury address. The only cost is the Zcash network fee, which goes to miners.</p>
+      <p>protocol fee. No output pays Byte and there is no treasury address. A facilitator may charge an optional fee of its own, off by default and enforced by its verification, not by the chain. Otherwise the only cost is the Zcash network fee, which goes to miners.</p>
     </div>
   </div>
 </section>
@@ -537,7 +537,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
   <div class="plate" style="margin-top:20px">
     <ul>
       <li><strong>That a shielded transaction happened, and when.</strong> Timing correlation is not defeated.</li>
-      <li><strong>Any transparent funding rail.</strong> NEAR Intents supports ZEC at transparent addresses only, so every deposit there is public. Byte's largest and least reducible leak.</li>
+      <li><strong>Any transparent funding rail.</strong> NEAR Intents supports ZEC at transparent addresses only, so every deposit there is public. Byte's largest and least reducible leak. The rail is implemented, dry-run only, and no live funding has been performed.</li>
       <li><strong>Anything crossing pools.</strong> ZIP 318 reveals the net amount, which is why Byte refuses to cross rather than manage it.</li>
       <li><strong>Whatever an agent publishes about itself</strong> in its Agent Card.</li>
       <li><strong>Network metadata.</strong> The light server sees your IP and your queries.</li>

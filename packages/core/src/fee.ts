@@ -3,7 +3,7 @@
  *
  * ## Byte's protocol fee is zero
  *
- * There is no fee output, no treasury address and nothing to reconcile. "No protocol fee",
+ * No output pays Byte, there is no treasury address and nothing to reconcile. "No protocol fee",
  * not "free" — the Zcash network fee still applies and goes to miners.
  *
  * ## What this is, and what enforces it

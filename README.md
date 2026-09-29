@@ -98,7 +98,9 @@ surprise someone:
 - **That a shielded transaction happened, and when.** Timing correlation is not defeated.
 - **Any transparent funding rail.** ZEC on NEAR Intents is *"Partially supported - Transparent
   addresses only"*. Every deposit and withdrawal there is public. This is Byte's largest and
-  least reducible leak, which is why the rail is not in this release.
+  least reducible leak. The rail is **implemented, dry-run only, and no live funding has been
+  performed through it**; if your threat model cannot tolerate a public funding leg, fund the
+  wallet with shielded ZEC and do not use it.
 - **Anything crossing pools.** ZIP 318: *"The net amount crossing between the pools is revealed
   on-chain."* Byte refuses to cross pools rather than manage this — change stays in Ironwood,
   and a payer whose wallet would have to spend from transparent or Orchard fails with
@@ -119,10 +121,11 @@ Implemented and tested:
 | Package | What it does |
 |---------|--------------|
 | `@byte-protocol/core` | Scheme types, memo codec, ZIP-321, receipts, amounts, pools, store interfaces |
-| `@byte-protocol/wallet` | The wallet contract, a `byte-walletd` backend for the real chain, and a deterministic mock that models the failure modes |
-| `@byte-protocol/stores` | In-memory invoice and receipt stores |
-| `@byte-protocol/server` | Invoice issuance and payment verification |
-| `@byte-protocol/client` | `createByteFetch`, the payer, and the spend guard |
+| `@byte-protocol/wallet` | The wallet contract, a `byte-walletd` backend for the real chain, and a deterministic mock that models the failure modes. Includes `shield`, `unshield` and the auto-shielder for transparent receipts |
+| `@byte-protocol/stores` | In-memory invoice and receipt stores. **Not durable:** a restart re-opens the replay window |
+| `@byte-protocol/pricing` | ZEC/USD price sources (NEAR Intents, Kraken) behind staleness and cross-source guards, for invoices priced in USD |
+| `@byte-protocol/server` | Invoice issuance, USD-priced invoices, the optional facilitator fee, and payment verification |
+| `@byte-protocol/client` | `createByteFetch`, the payer (which pays every output an invoice names), and the spend guard |
 | `@byte-protocol/facilitator` | View-only verification as a service |
 | `@byte-protocol/registry` | Agent Cards: signing, verification, resolution |
 | `@byte-protocol/adapter-x402` | Byte as an x402 v2 scheme |
@@ -130,11 +133,12 @@ Implemented and tested:
 | `@byte-protocol/adapter-a2a-ap2` | Byte as an AP2 payment method, carried over A2A |
 | `@byte-protocol/adapter-langchain` | LangChain tools: fetch paid resources, check balance, review spending |
 | `@byte-protocol/rails` | The funding rail interface; every rail must declare whether its Zcash leg is public |
-| `@byte-protocol/rail-near-intents` | Fund from another chain via NEAR Intents, dry-run. **The Zcash leg is transparent and public.** |
+| `@byte-protocol/rail-near-intents` | Fund from another chain via NEAR Intents. **Implemented, dry-run only, no live funding performed. The Zcash leg is transparent and public.** |
 | `@byte-protocol/console` | The owner-only JSON API and the Byte console |
 | `crates/byte-walletd` | The Rust sidecar on librustzcash: addresses, sync, send, verify |
 
-**Planned, and not claimed to work:** a Redis store, and every other funding rail — each named
+**Planned, and not claimed to work:** a durable store, the cash-out direction of the NEAR
+rail, and every other funding rail, each named
 with its reason in [RAILS.md](docs/RAILS.md). Nothing above is listed as supported without
 code and a passing test behind it.
 
@@ -174,9 +178,12 @@ Three decisions where the obvious implementation is wrong:
 
 ## Fees
 
-**Byte's protocol fee is zero.** No fee output, no treasury address, nothing of mine in any
-transaction. Not "free" — the Zcash network fee still applies, and it goes to miners.
+**Byte's protocol fee is zero.** No output in any transaction pays me, and there is no
+treasury address. Not "free": the Zcash network fee still applies, and it goes to miners.
 The testnet run above paid 10,000 zatoshis under ZIP 317.
+
+The one other fee that can exist is the optional facilitator fee below. It is separate from
+the protocol fee, off by default, and pays the facilitator rather than me.
 
 ### The one fee that exists, and what enforces it
 
@@ -196,6 +203,19 @@ asks the payee to verify — skips the fee.**
 
 That is not a hole I have left open. It is what having no contracts means. Anyone
 advertising an on-chain-enforced fee on Zcash is describing something that does not exist.
+
+### Pricing in dollars, settling in ZEC
+
+A merchant can price an invoice in USD. Byte converts it to zatoshis once, at issue time,
+using NEAR Intents and Kraken, and refuses to invoice if the price is stale or if the two
+sources disagree by more than a configured margin.
+
+**Settlement is in ZEC.** There is no shielded stablecoin on Zcash and ZSAs are not on
+mainnet. The quote is locked into the invoice and never consulted again, so a payment is
+judged against the zatoshi amount alone. That means **the payer and the payee both carry
+price risk between the moment the quote is locked and the moment the ZEC is cashed out**.
+Byte does not hedge it. The lever is the invoice lifetime: a five-minute invoice carries
+five minutes of risk.
 
 ---
 
