@@ -166,12 +166,33 @@ importers:
 
   .:
     devDependencies:
+      '@byte-protocol/adapter-x402':
+        specifier: workspace:*
+        version: link:packages/adapters/x402
+      '@byte-protocol/client':
+        specifier: workspace:*
+        version: link:packages/client
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:packages/core
+      '@byte-protocol/server':
+        specifier: workspace:*
+        version: link:packages/server
+      '@byte-protocol/stores':
+        specifier: workspace:*
+        version: link:packages/stores
+      '@byte-protocol/wallet':
+        specifier: workspace:*
+        version: link:packages/wallet
       '@types/node':
         specifier: ^26.6.3
         version: 26.6.3
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(postcss@8.5.28)(tsx@4.23.15)(typescript@7.0.2)
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.15
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

@@ -20,13 +20,21 @@
     "typecheck": "tsc --build --force",
     "clean": "pnpm -r exec rm -rf dist",
     "demo": "pnpm --filter @byte-protocol/example-agent-marketplace demo",
-    "console": "pnpm --filter @byte-protocol/example-agent-marketplace console"
+    "console": "pnpm --filter @byte-protocol/example-agent-marketplace console",
+    "test:testnet": "tsx scripts/testnet-e2e.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
     "tsup": "^8.5.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "tsx": "^4.20.6",
+    "@byte-protocol/adapter-x402": "workspace:*",
+    "@byte-protocol/client": "workspace:*",
+    "@byte-protocol/core": "workspace:*",
+    "@byte-protocol/server": "workspace:*",
+    "@byte-protocol/stores": "workspace:*",
+    "@byte-protocol/wallet": "workspace:*"
   },
   "packageManager": "pnpm@12.6.0"
 }
