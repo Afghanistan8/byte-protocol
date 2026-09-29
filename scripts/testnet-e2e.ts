@@ -161,63 +161,68 @@ async function main(): Promise<void> {
     line("    Building and proving the transaction. The first send downloads the Sapling");
     line("    proving parameters, about 50 MB, once.");
 
+    // Capture the payment header the client produces, so the wait loop can re-present the
+    // SAME proof instead of paying again.
+    //
+    // This is the mistake the first real run caught. Calling the paying fetch again to poll
+    // builds a NEW payment each time: on that run it failed with "insufficient balance
+    // (have 0)" — correct, because the first send had consumed the only confirmed note and
+    // the change was still in flight — but with more confirmed funds it would simply have
+    // paid twice. A client waiting for confirmation must resend its claim, never its money.
+    let paymentHeader: string | undefined;
+
     const guard = new SpendGuard({
       maxPerCallZat: String(BigInt(PRICE_ZAT) * 2n),
       maxDailyZat: "10000000",
       allow: ["127.0.0.1"],
     });
 
-    let paidTxid: string | undefined;
     const pay = createX402Fetch({
       wallet,
       guard,
-      // The first attempt will be 402 while the payment confirms, so allow the loop to
-      // settle once and then poll for confirmations ourselves rather than paying twice.
       maxPayments: 1,
-      fetch: async (input, init) => globalThis.fetch(input as string, init),
+      fetch: async (input, init) => {
+        const header = new Headers(init?.headers).get(PAYMENT_SIGNATURE_HEADER);
+        if (header !== null) paymentHeader = header;
+        return globalThis.fetch(input as string, init);
+      },
     });
 
     const started = Date.now();
     const first = await pay(`${origin}/report`);
 
+    let paidTxid: string | undefined;
+
     if (first.status === 200) {
-      const body = (await first.json()) as { txid: string };
-      paidTxid = body.txid;
+      paidTxid = ((await first.json()) as { txid: string }).txid;
+      line("    served on the first retry");
     } else {
-      // Expected: the payment was broadcast but has not confirmed yet. Find it, wait, and
-      // present the same claim again.
-      const failure = (await first.json()) as { reason?: string; message?: string };
+      const failure = (await first.json()) as { reason?: string };
       line(`    first retry answered ${first.status} (${failure.reason ?? "?"}) — as expected`);
+      line("    the payment is broadcast; waiting for it to be mined");
 
-      const audit = guard.auditLog().filter((e) => e.allowed);
-      const invoiceId = audit.at(-1)?.invoiceId ?? lastInvoiceId;
-      if (invoiceId === undefined) throw new Error("could not identify the invoice just paid");
-
-      const invoice = await store.get(invoiceId);
-      if (invoice === undefined) throw new Error(`invoice ${invoiceId} is not in the store`);
-
-      line(`    invoice ${invoiceId}`);
-      line("    waiting for the payment to be mined…");
-
-      // Find the transaction by asking the store what settled it, or by waiting for the
-      // verifier to see it.
-      const deadline = Date.now() + 20 * 60 * 1000;
-      let found: string | undefined;
-      while (Date.now() < deadline && found === undefined) {
-        const refreshed = await store.get(invoiceId);
-        if (refreshed?.txid !== undefined) {
-          found = refreshed.txid;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 20_000));
-        const retry = await pay(`${origin}/report`);
-        if (retry.status === 200) {
-          found = ((await retry.json()) as { txid: string }).txid;
-        }
+      if (paymentHeader === undefined) {
+        throw new Error("no payment was made, so there is nothing to wait for");
       }
 
-      if (found === undefined) throw new Error("the payment never confirmed");
-      paidTxid = found;
+      const deadline = Date.now() + 20 * 60 * 1000;
+      while (Date.now() < deadline && paidTxid === undefined) {
+        await new Promise((resolve) => setTimeout(resolve, 20_000));
+
+        // Re-present the existing proof. No wallet call, no second payment.
+        const retry = await globalThis.fetch(`${origin}/report`, {
+          headers: { [PAYMENT_SIGNATURE_HEADER]: paymentHeader },
+        });
+
+        if (retry.status === 200) {
+          paidTxid = ((await retry.json()) as { txid: string }).txid;
+          break;
+        }
+        const body = (await retry.json()) as { reason?: string };
+        line(`    still ${retry.status} (${body.reason ?? "?"})…`);
+      }
+
+      if (paidTxid === undefined) throw new Error("the payment never confirmed");
     }
 
     const elapsed = Math.round((Date.now() - started) / 1000);

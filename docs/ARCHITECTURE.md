@@ -112,6 +112,20 @@ recorded in [SECURITY.md](SECURITY.md) §5.6.
 requests both observe an unconsumed invoice and both get served for one payment. The
 interface exists to make that step impossible to skip by accident.
 
+### One wallet contract, two backends
+
+`WalletdWallet` talks to the sidecar over its localhost JSON API; `MockWallet` is
+deterministic and in-process. Nothing above the wallet package knows which it has — the
+issuer, the verifier, the payer and every adapter are written once and run against either.
+
+That is not an abstraction for its own sake. It is what lets the whole protocol be tested
+exhaustively against a mock that models reorgs and wrong-pool payments, and then run
+unchanged against a chain that does those things for real.
+
+The view-only split survives the HTTP boundary too: `connectWalletd` asks the sidecar whether
+it holds a spending key and returns a wallet with no `send` when it does not, stripping the
+method rather than merely typing it away.
+
 ### The memo codec exists twice, on purpose
 
 TypeScript builds memos; Rust reads them back off the chain. Two implementations of one
@@ -131,7 +145,7 @@ mysteriously failing verification.
 | Package | Responsibility |
 |---------|----------------|
 | `core` | Scheme constants, memo codec, ZIP-321, receipts, amounts, pools, errors, store interfaces. No network, no wallet. |
-| `wallet` | The `ZcashWallet` contract and its backends, including a deterministic mock. |
+| `wallet` | The wallet contract, the `byte-walletd` backend, and a deterministic mock. |
 | `client` | `createByteFetch`, `BytePayer`, the spend guard. |
 | `server` | `byteGate()`, invoice issuance, verification. |
 | `facilitator` | View-only verification as a service. |

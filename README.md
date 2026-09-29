@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**408 tests pass**: 352 TypeScript, 56 Rust.
+**424 tests pass**: 368 TypeScript, 56 Rust.
 
 ---
 
@@ -119,7 +119,7 @@ Implemented and tested:
 | Package | What it does |
 |---------|--------------|
 | `@byte-protocol/core` | Scheme types, memo codec, ZIP-321, receipts, amounts, pools, store interfaces |
-| `@byte-protocol/wallet` | The wallet contract, plus a deterministic mock that models the failure modes |
+| `@byte-protocol/wallet` | The wallet contract, a `byte-walletd` backend for the real chain, and a deterministic mock that models the failure modes |
 | `@byte-protocol/stores` | In-memory invoice and receipt stores |
 | `@byte-protocol/server` | Invoice issuance and payment verification |
 | `@byte-protocol/client` | `createByteFetch`, the payer, and the spend guard |
@@ -216,7 +216,15 @@ not be fetching scripts from third parties who would then see every operator who
 
 For the sidecar and a real testnet payment, see
 [crates/byte-walletd/.env.example](crates/byte-walletd/.env.example) and
-[docs/TESTNET_RUNS.md](docs/TESTNET_RUNS.md).
+[docs/TESTNET_RUNS.md](docs/TESTNET_RUNS.md). With a funded wallet and the sidecar running:
+
+```bash
+BYTE_TESTNET=1 BYTE_WALLETD_TOKEN=... pnpm test:testnet
+```
+
+That runs the whole protocol — x402 adapter, issuer, verifier, sidecar — against real Zcash
+testnet, and fails if any output lands outside Ironwood. It is gated behind `BYTE_TESTNET=1`
+because it spends real TAZ.
 
 ---
 
