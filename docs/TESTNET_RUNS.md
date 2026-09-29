@@ -125,3 +125,84 @@ reversal cannot be quietly dropped without a test noticing.
 Unit tests did not catch this because both the writer and the reader of a txid were Byte's
 own code, agreeing with each other and disagreeing with the chain. Only a real transaction
 could expose it.
+
+---
+
+## 2026-09-29 — the x402 adapter, end to end
+
+The second run exercises the **whole stack against a real chain**: the x402 adapter, the
+invoice issuer, the payment verifier, the spend guard, the `WalletdWallet` backend and the
+`byte-walletd` sidecar. The first run proved the sidecar could pay; this one proves the parts
+above it agree with each other and with consensus.
+
+Run with `BYTE_TESTNET=1 pnpm test:testnet`.
+
+```
+01. Connect to byte-walletd
+    network zcash:05a60a92d99d85997cce3b87616c089f
+    synced true at block 4414380
+    spendable 9990000 zat
+
+02. Start a seller gated by the x402 adapter
+    listening on http://127.0.0.1:51681, price 50000 zat
+
+03. Buy the resource with a real shielded payment
+    first retry answered 402 (pending) — as expected
+    the payment is broadcast; waiting for it to be mined
+    still 402 (pending)…
+    settled by 49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712 in 65s
+
+04. Read the payment back off the chain
+    ironwood       8870000 zat  2 conf  (no memo)
+    ironwood         50000 zat  2 conf  BYTE1|0ba01200d1ee48741531cd80c627bd6c|0ece36d2088bbeac0541d92d98c83df8
+
+05. Result
+    resource served: 1 time(s)
+    every output in the Ironwood pool: yes (2 output(s))
+    memo survived the chain: yes
+    guard decisions: 1, spent 50000 zat
+```
+
+**txid `49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712`**, 65 seconds from
+request to settlement.
+
+Both outputs — the 50,000 payment and the 8,870,000 change — are in Ironwood. Nothing crossed
+pools, so no net amount was revealed under ZIP 318. The change output carries no memo, which
+is correct: it is a payment to self, not an invoice settlement.
+
+### `402 pending` is not a failure
+
+The seller answered `402 pending` twice before serving. That is the documented behaviour of
+`minConfirmations: 1` meeting a 75-second block target, and seeing it happen on a real chain
+is worth more than the mock's version of it: the client paid **once** and then waited,
+re-presenting the same proof until the payment confirmed.
+
+### A bug the mock could never have caught
+
+The first attempt at this run failed:
+
+```
+byte-walletd /send returned 502 (send_failed):
+  building proposal: Insufficient balance (have 0, need 60000 including fee)
+```
+
+The error is correct — the first send had consumed the only confirmed note and the change was
+still in flight — but it was hiding something worse. The script polled for confirmation by
+calling the *paying* fetch again, which builds a **new payment** every time. With more
+confirmed funds it would simply have paid twice.
+
+A client waiting for confirmation must re-send its claim, never its money. Fixed by capturing
+the `PAYMENT-SIGNATURE` header from the first attempt and re-presenting that same proof.
+
+On a deterministic mock chain, blocks appear on demand and a second payment always succeeds.
+Only real confirmation latency exposes this. It is the clearest argument in this repository
+for running against a real chain rather than trusting a green test suite.
+
+The protocol itself behaved correctly throughout: the payer paid once, the seller answered
+`402 pending`, and the wallet refused to overspend rather than doing something unsafe.
+
+### Limitation
+
+Both roles ran against one wallet — the seller minted invoice addresses from the same sidecar
+the buyer spent from. This does **not** prove two separate wallets can transact. It proves the
+adapter, the issuer, the verifier and the sidecar agree with each other and with the chain.

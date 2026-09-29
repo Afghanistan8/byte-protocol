@@ -59,6 +59,7 @@ adapter and rail checked for a test file.
 | The console is owner-only | README, API | `console/src/api.ts` — no exempt route | `console.test.ts` "has no unauthenticated route, not even a health check" |
 | The console loads nothing externally | README | `ui.ts` — single self-contained file | `console.test.ts` "loads nothing from anywhere else" |
 | Real shielded payment on testnet | README, TESTNET_RUNS | — | txid `15a1ded9…768369`, block 4,413,018 |
+| The x402 adapter works against a real chain | README, TESTNET_RUNS | `adapters/x402`, `WalletdWallet` | txid `49ab740b…3aa712`, both outputs Ironwood, memo intact |
 
 ---
 
@@ -90,7 +91,7 @@ These are real and are documented where a reader will meet them, not only here.
 
 | Gap | Where it is disclosed |
 |-----|----------------------|
-| Only the core loop has been proven on a real chain; adapters are proven against the mock | ROADMAP "Next" |
+| Only x402 has been proven on a real chain; MCP, A2A/AP2 and LangChain are proven against the mock | ROADMAP "Next", TESTNET_RUNS |
 | The memory store loses replay protection on restart | `MemoryInvoiceStore` class doc, SECURITY §5.3, ROADMAP |
 | librustzcash has never tested Ironwood as a source pool, and Byte spends from it | TOOLCHAIN, SECURITY §5.5, ROADMAP |
 | Verification is not a consensus judgement | SPEC §7, SECURITY §5.4, ROADMAP |

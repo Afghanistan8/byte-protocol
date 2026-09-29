@@ -23,8 +23,8 @@ track. It has not been audited. Do not put mainnet funds behind it.
 end-to-end payment, verifiable on any testnet explorer:
 
 ```
-txid   15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369
-block  4,413,018
+txid   15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369   the protocol
+txid   49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712   through the x402 adapter
 ```
 
 Read back through the API, both outputs — the payment and the change — report
