@@ -21,7 +21,8 @@
     "clean": "pnpm -r exec rm -rf dist",
     "demo": "pnpm --filter @byte-protocol/example-agent-marketplace demo",
     "console": "pnpm --filter @byte-protocol/example-agent-marketplace console",
-    "test:testnet": "tsx scripts/testnet-e2e.ts"
+    "test:testnet": "tsx scripts/testnet-e2e.ts",
+    "site": "node -e \"const h=require('http'),f=require('fs');h.createServer((q,s)=>{s.writeHead(200,{'content-type':'text/html'});s.end(f.readFileSync('apps/site/index.html'))}).listen(4321,()=>console.log('http://127.0.0.1:4321'))\""
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

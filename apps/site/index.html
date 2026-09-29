@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Byte Protocol</title>
+<meta name="description" content="A privacy layer for AI agent payments, settling in shielded Zcash.">
+<meta property="og:title" content="Byte Protocol">
+<meta property="og:description" content="A privacy layer for AI agent payments, settling in shielded Zcash.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='34' fill='none' stroke='%237ef0b2' stroke-width='6'/></svg>">
+<style>
+  :root {
+    --ground: #070807;
+    --plate: #0c0e0d;
+    --grid: rgba(120, 140, 130, 0.07);
+    --rule: rgba(150, 170, 160, 0.22);
+    --ink: #eef2ef;
+    --ink-dim: #9fada6;
+    --ink-faint: #6c7a74;
+    --accent: #7ef0b2;
+    --bad: #f08d8d;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: var(--mono); font-size: 15px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(0,0,0,0.78) 100%);
+  }
+  .wrap { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 16px 90px; }
+
+  .label {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .label .n { color: var(--accent); }
+
+  /* ------------------------------------------------------------------ header */
+  header.top {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 16px; flex-wrap: wrap; padding: 26px 0 18px; border-bottom: 1px solid var(--rule);
+  }
+  .wordmark { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.34em; }
+  .wordmark span { color: var(--accent); }
+  header.top nav { display: flex; gap: 20px; }
+  header.top a { color: var(--ink-faint); text-decoration: none; font-size: 11px;
+    font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+  header.top a:hover { color: var(--accent); }
+
+  /* -------------------------------------------------------------------- hero */
+  .hero { padding: 72px 0 40px; text-align: center; }
+  .hero h2 {
+    margin: 0 0 22px; font-size: clamp(26px, 5vw, 42px); font-weight: 700;
+    letter-spacing: -0.02em; line-height: 1.22;
+  }
+  .hero h2 em { font-style: normal; color: var(--accent); }
+  .hero p { margin: 0 auto; max-width: 620px; color: var(--ink-dim); font-weight: 500; }
+
+  .orb { display: flex; justify-content: center; margin: 44px 0 10px; }
+  .orb svg { width: min(210px, 50vw); }
+  .orb .ring { fill: none; stroke: var(--accent); stroke-width: 0.6; opacity: 0.5; }
+  .orb .ring.faint { opacity: 0.18; }
+  .orb .core { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.85; }
+  @media (prefers-reduced-motion: no-preference) {
+    .orb .spin { transform-origin: 50% 50%; animation: turn 38s linear infinite; }
+  }
+  @keyframes turn { to { transform: rotate(360deg); } }
+
+  /* ------------------------------------------------------------------ plates */
+  section { margin-top: 64px; }
+  .plate { position: relative; background: var(--plate); border: 1px solid var(--rule); padding: 30px 24px; }
+  .plate .corner { position: absolute; width: 15px; height: 15px; border-color: var(--accent); border-style: solid; border-width: 0; }
+  .tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
+  .tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; }
+  .bl { bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; }
+  .br { bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
+
+  h3 { margin: 0 0 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  section > p, .plate > p { color: var(--ink-dim); font-weight: 500; }
+  strong { color: var(--ink); font-weight: 700; }
+
+  .grid2 { display: grid; gap: 20px; grid-template-columns: 1fr; }
+  @media (min-width: 760px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+
+  ul { padding-left: 18px; color: var(--ink-dim); font-weight: 500; }
+  li { margin: 7px 0; }
+  li::marker { color: var(--accent); }
+
+  code, .code {
+    font-family: var(--mono); background: #060706; border: 1px solid var(--rule);
+    padding: 1px 5px; font-size: 12px; color: var(--ink); word-break: break-all;
+  }
+  pre {
+    background: #060706; border: 1px solid var(--rule); padding: 14px;
+    overflow-x: auto; font-size: 12px; margin: 14px 0; line-height: 1.6;
+  }
+  pre .c { color: var(--ink-faint); }
+  pre .g { color: var(--accent); }
+
+  /* -------------------------------------------------------------- memo demo */
+  .field { margin-top: 14px; }
+  .field label { display: block; margin-bottom: 5px; }
+  .field input {
+    width: 100%; padding: 10px 12px; background: #060706; color: var(--ink);
+    font-family: var(--mono); font-size: 13px; border: 1px solid var(--rule); outline: none;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .readout { margin-top: 20px; padding: 16px; background: #060706; border: 1px solid var(--rule); }
+  .readout .memo { font-size: 13px; word-break: break-all; line-height: 1.8; }
+  .readout .memo .tag { color: var(--ink-faint); }
+  .readout .memo .id { color: var(--ink); }
+  .readout .memo .bind { color: var(--accent); font-weight: 700; }
+  .verdict { margin-top: 14px; font-size: 13px; font-weight: 600; }
+  .verdict.ok { color: var(--accent); }
+  .verdict.no { color: var(--bad); }
+
+  /* ------------------------------------------------------------------ proof */
+  .tx { display: block; padding: 12px 0; border-bottom: 1px solid rgba(150,170,160,0.1); text-decoration: none; }
+  .tx:last-child { border-bottom: 0; }
+  .tx .what { color: var(--ink); font-size: 13px; font-weight: 600; }
+  .tx .hash { color: var(--ink-faint); font-size: 11px; word-break: break-all; }
+  .tx:hover .hash { color: var(--accent); }
+
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 34px; }
+  .cta a {
+    padding: 12px 22px; border: 1px solid var(--accent); color: var(--accent);
+    text-decoration: none; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase;
+  }
+  .cta a:hover { background: rgba(126,240,178,0.09); }
+  .cta a.quiet { border-color: var(--rule); color: var(--ink-dim); }
+  .cta a.quiet:hover { border-color: var(--ink-dim); background: transparent; }
+
+  footer { margin-top: 74px; padding-top: 22px; border-top: 1px solid var(--rule); }
+  footer p { font-size: 11px; color: var(--ink-faint); font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <h2 class="wordmark">BYTE<span>/</span>PROTOCOL</h2>
+  <nav>
+    <a href="#how">How</a>
+    <a href="#try">Try it</a>
+    <a href="#proof">Proof</a>
+    <a href="#limits">Limits</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <h2>Agent payments that don't<br>publish <em>who paid whom</em></h2>
+  <p>
+    When two AI agents settle on a public chain, the amount, both balances and the entire
+    counterparty graph are readable by anyone. Byte settles in the shielded Zcash Ironwood
+    pool instead.
+  </p>
+
+  <div class="orb">
+    <svg viewBox="0 0 200 200" role="img" aria-label="Shielded pool">
+      <g class="spin">
+        <circle class="ring" cx="100" cy="100" r="74"/>
+        <ellipse class="ring" cx="100" cy="100" rx="74" ry="26"/>
+        <ellipse class="ring faint" cx="100" cy="100" rx="74" ry="48"/>
+        <ellipse class="ring faint" cx="100" cy="100" rx="26" ry="74"/>
+        <ellipse class="ring" cx="100" cy="100" rx="48" ry="74"/>
+      </g>
+      <circle class="core" cx="100" cy="100" r="30"/>
+      <circle class="core" cx="100" cy="100" r="15" opacity="0.4"/>
+    </svg>
+  </div>
+  <p class="label">Amounts · Parties · Balances &mdash; not on chain</p>
+</div>
+
+<!-- ------------------------------------------------------------------- how -->
+<section id="how">
+  <p class="label"><span class="n">01.</span> How it works</p>
+  <h3>Four steps, no smart contracts</h3>
+  <p>
+    Zcash has no contracts and Byte invents none. The guarantees come from two mechanisms:
+    shielded Ironwood transactions, which hide value and participants, and viewing keys plus
+    encrypted memos, which let a payee prove to itself that a specific invoice was paid.
+  </p>
+
+<pre><span class="c">// 1. the agent asks for something that costs money</span>
+GET /report                              <span class="c">→</span> <span class="g">402</span> + invoice
+
+<span class="c">// 2. the invoice names a FRESH address, used once, never again</span>
+payTo: utest1nmxcdnkh7e2lq4dqzaj22r4j0zzy37lr3y4vtjw…
+memo:  <span class="g">BYTE1</span>|&lt;invoiceId&gt;|&lt;binding&gt;
+
+<span class="c">// 3. the client checks its spend guard, then pays — shielded</span>
+<span class="c">//    an observer sees a transaction happened. nothing else.</span>
+
+<span class="c">// 4. retry with the proof; the payee verifies with a VIEW-ONLY key</span>
+GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class="g">200</span> + the report</pre>
+
+  <div class="grid2" style="margin-top:22px">
+    <div class="plate">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <p class="label">A fresh address per invoice</p>
+      <p>
+        Two payments to the same merchant are not linkable through the address they arrived
+        at. Byte mints a new diversified address every time.
+      </p>
+    </div>
+    <div class="plate">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <p class="label">Verification without spending</p>
+      <p>
+        A facilitator holds a viewing key, never a spending key. Compromise it completely and
+        it still cannot move a zatoshi &mdash; enforced by the type, not by a promise.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ------------------------------------------------------------------- try -->
+<section id="try">
+  <p class="label"><span class="n">02.</span> Try it</p>
+  <h3>Watch a memo bind a payment</h3>
+  <p>
+    Every Byte payment carries a memo committing to the invoice, the amount <em>and</em> the
+    destination, under a key only the payee holds. This runs the real computation
+    &mdash; HMAC-SHA256, in your browser, nothing sent anywhere. <strong>Change the amount and
+    watch the binding break.</strong>
+  </p>
+
+  <div class="plate" style="margin-top:20px">
+    <span class="corner tl"></span><span class="corner tr"></span>
+    <span class="corner bl"></span><span class="corner br"></span>
+
+    <div class="field">
+      <label class="label" for="m-invoice">Invoice ID</label>
+      <input id="m-invoice" value="a4f23e7556fc9566f78673c8ebc52d3d" spellcheck="false">
+    </div>
+    <div class="field">
+      <label class="label" for="m-amount">Amount (zatoshis)</label>
+      <input id="m-amount" value="100000" spellcheck="false">
+    </div>
+    <div class="field">
+      <label class="label" for="m-payto">Pay to</label>
+      <input id="m-payto" value="utest1nmxcdnkh7e2lq4dqzaj22r4j0zzy37lr" spellcheck="false">
+    </div>
+
+    <div class="readout">
+      <p class="label">The memo the payer must attach</p>
+      <p class="memo" id="m-out">&mdash;</p>
+      <p class="verdict" id="m-verdict">&mdash;</p>
+    </div>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------------- proof -->
+<section id="proof">
+  <p class="label"><span class="n">03.</span> Proof</p>
+  <h3>It runs on a real chain</h3>
+  <p>
+    Two payments on Zcash testnet, verifiable by anyone. In both, every output &mdash; the
+    payment <em>and</em> the change &mdash; landed in Ironwood, so nothing crossed pools and no
+    net amount was revealed.
+  </p>
+
+  <div class="plate" style="margin-top:20px">
+    <span class="corner tl"></span><span class="corner br"></span>
+    <a class="tx" href="https://testnet.zcashexplorer.app/transactions/15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369" target="_blank" rel="noopener noreferrer">
+      <span class="what">The protocol &mdash; block 4,413,018</span><br>
+      <span class="hash">15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369</span>
+    </a>
+    <a class="tx" href="https://testnet.zcashexplorer.app/transactions/49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712" target="_blank" rel="noopener noreferrer">
+      <span class="what">Through the x402 adapter &mdash; 65s, request to settlement</span><br>
+      <span class="hash">49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712</span>
+    </a>
+  </div>
+
+  <div class="grid2" style="margin-top:20px">
+    <div class="plate">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <p class="label">424 tests</p>
+      <p>368 TypeScript, 56 Rust. Every documented failure has a test, including replays, wrong-pool payments and reorgs.</p>
+    </div>
+    <div class="plate">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <p class="label">Zero protocol fee</p>
+      <p>No fee output, no treasury address. The only cost is the Zcash network fee, which goes to miners.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- limits -->
+<section id="limits">
+  <p class="label"><span class="n">04.</span> Limits</p>
+  <h3>What is <em>not</em> hidden</h3>
+  <p>
+    A privacy system described only by its guarantees will surprise someone, and the surprise
+    is always worse than the limitation.
+  </p>
+
+  <div class="plate" style="margin-top:20px">
+    <span class="corner tl"></span><span class="corner br"></span>
+    <ul>
+      <li><strong>That a shielded transaction happened, and when.</strong> Timing correlation is not defeated.</li>
+      <li><strong>Any transparent funding rail.</strong> NEAR Intents supports ZEC at transparent addresses only, so every deposit there is public. Byte's largest and least reducible leak.</li>
+      <li><strong>Anything crossing pools.</strong> ZIP 318 reveals the net amount, which is why Byte refuses to cross rather than manage it.</li>
+      <li><strong>Whatever an agent publishes about itself</strong> in its Agent Card.</li>
+      <li><strong>Network metadata.</strong> The light server sees your IP and your queries.</li>
+    </ul>
+  </div>
+
+  <div class="plate" style="margin-top:20px">
+    <span class="corner tl"></span><span class="corner br"></span>
+    <p class="label">Honest status</p>
+    <p>
+      Hackathon-stage, built for the ZECATHON. Not audited. Ironwood-era wallet tooling is
+      young &mdash; librustzcash has never run its shielded-pool test suite with Ironwood as the
+      active pool, and Byte spends from Ironwood. <strong>Do not put mainnet funds behind it.</strong>
+    </p>
+  </div>
+</section>
+
+<div class="cta">
+  <a href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Read the code</a>
+  <a class="quiet" href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">Threat model</a>
+  <a class="quiet" href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/TESTNET_RUNS.md" target="_blank" rel="noopener noreferrer">Testnet runs</a>
+</div>
+
+<footer>
+  <p>
+    Byte Protocol &mdash; a privacy layer for AI agent payments, settling in shielded Zcash.
+    MIT licensed. Built for the ZECATHON, September 2026.
+  </p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // The payee's HMAC key. Real deployments read this from the environment and never
+  // publish it; this page uses a fixed demo key so the page is reproducible. Knowing the
+  // key is exactly what lets a payee — and only a payee — recognise its own invoice.
+  var DEMO_SECRET = new Uint8Array(32).fill(7);
+
+  var els = {
+    invoice: document.getElementById("m-invoice"),
+    amount: document.getElementById("m-amount"),
+    payTo: document.getElementById("m-payto"),
+    out: document.getElementById("m-out"),
+    verdict: document.getElementById("m-verdict")
+  };
+
+  // The binding as issued, so changing a field can be shown to break it.
+  var issued = null;
+
+  function hex(buffer) {
+    return Array.prototype.map
+      .call(new Uint8Array(buffer), function (b) { return b.toString(16).padStart(2, "0"); })
+      .join("");
+  }
+
+  /**
+   * The real computation: HMAC-SHA256 over invoiceId ‖ amount ‖ payTo, null-separated,
+   * truncated to 16 bytes. Identical to packages/core/src/memo.ts and
+   * crates/byte-walletd/src/memo.rs, both of which pin the same test vector.
+   *
+   * The null separators are not decoration. Without them ("1","23") and ("12","3") would
+   * hash identically, and a binding that collides is a binding that can be replayed onto
+   * a different invoice.
+   */
+  function binding(invoiceId, amount, payTo) {
+    var encoder = new TextEncoder();
+    var preimage = encoder.encode(invoiceId + "\u0000" + amount + "\u0000" + payTo);
+
+    return crypto.subtle
+      .importKey("raw", DEMO_SECRET, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+      .then(function (key) { return crypto.subtle.sign("HMAC", key, preimage); })
+      .then(function (signature) { return hex(signature).slice(0, 32); });
+  }
+
+  function render() {
+    var invoiceId = els.invoice.value.trim();
+    var amount = els.amount.value.trim();
+    var payTo = els.payTo.value.trim();
+
+    binding(invoiceId, amount, payTo).then(function (tag) {
+      els.out.innerHTML =
+        '<span class="tag">BYTE1|</span>' +
+        '<span class="id">' + escapeHtml(invoiceId) + '</span>' +
+        '<span class="tag">|</span>' +
+        '<span class="bind">' + tag + "</span>";
+
+      if (issued === null) {
+        issued = { invoiceId: invoiceId, amount: amount, payTo: payTo, tag: tag };
+      }
+
+      var changed = [];
+      if (amount !== issued.amount) changed.push("amount");
+      if (payTo !== issued.payTo) changed.push("destination");
+      if (invoiceId !== issued.invoiceId) changed.push("invoice");
+
+      if (changed.length === 0) {
+        els.verdict.className = "verdict ok";
+        els.verdict.textContent =
+          "Verifies. The payee recomputes this from its own key — no database lookup needed.";
+      } else {
+        els.verdict.className = "verdict no";
+        els.verdict.textContent =
+          "Rejected: the " + changed.join(" and ") +
+          " changed, so the binding no longer matches the invoice that was issued. " +
+          "This memo cannot be replayed onto it.";
+      }
+    });
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  // crypto.subtle exists only in a secure context, so opening this file directly with
+  // file:// leaves it undefined and the demo would sit on a dash forever, looking broken
+  // rather than explaining itself. Over https — or http://127.0.0.1 — it works.
+  if (typeof crypto === "undefined" || crypto.subtle === undefined) {
+    els.out.textContent = "BYTE1|" + els.invoice.value + "|………";
+    els.verdict.className = "verdict no";
+    els.verdict.textContent =
+      "This demo needs the Web Crypto API, which browsers only expose over https or " +
+      "http://localhost. Opening this page as a local file will not work.";
+  } else {
+    ["invoice", "amount", "payTo"].forEach(function (name) {
+      els[name].addEventListener("input", render);
+    });
+    render();
+  }
+})();
+</script>
+</body>
+</html>
