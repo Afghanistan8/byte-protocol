@@ -117,11 +117,24 @@ afterEach(async () => {
   running = undefined;
 });
 
-async function connect(overrides?: Record<string, { status?: number; body: unknown }>) {
+async function connect(
+  overrides?: Record<string, { status?: number; body: unknown }>,
+  options: { random?: () => number } = {},
+) {
   const fake = fakeWalletd(overrides);
   running = fake;
   const url = await fake.start();
-  return { fake, wallet: await WalletdWallet.connect({ url, token: TOKEN }) };
+  const slept: number[] = [];
+  const wallet = await WalletdWallet.connect({
+    url,
+    token: TOKEN,
+    // Shielding deliberately delays. A suite that actually waited would be unusable.
+    sleep: async (ms) => {
+      slept.push(ms);
+    },
+    ...(options.random !== undefined ? { random: options.random } : {}),
+  });
+  return { fake, wallet, slept };
 }
 
 describe("connecting", () => {
@@ -313,5 +326,126 @@ describe("the view-only split survives HTTP", () => {
     // It can still do everything a payee needs.
     expect(await wallet.newInvoiceAddress()).toMatch(/^utest1/);
     expect((await wallet.status()).synced).toBe(true);
+  });
+});
+
+describe("shield", () => {
+  const SHIELD_OK = {
+    body: {
+      txid: "aa1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e7683690",
+      amountZat: "4990000",
+      feeZat: "10000",
+    },
+  };
+
+  it("sweeps in one transaction by default", async () => {
+    const { wallet, fake } = await connect({ "POST /shield": SHIELD_OK });
+    const result = await wallet.shield();
+
+    expect(result.transactions).toHaveLength(1);
+    expect(result.shieldedZat).toBe("4990000");
+    expect(result.feeZat).toBe("10000");
+
+    const call = fake.requests.find((r) => r.path === "/shield");
+    expect((call?.body as { fraction: number }).fraction).toBe(1);
+  });
+
+  it("asks for a shrinking fraction so a split does not sweep everything first", async () => {
+    // Without this the first transaction takes the lot and the remaining ones find
+    // nothing, which is a split in name only.
+    const { wallet, fake } = await connect({ "POST /shield": SHIELD_OK });
+    await wallet.shield({ splitInto: 3 });
+
+    const fractions = fake.requests
+      .filter((r) => r.path === "/shield")
+      .map((r) => (r.body as { fraction: number }).fraction);
+
+    expect(fractions).toEqual([1 / 3, 1 / 2, 1]);
+  });
+
+  it("waits a drawn delay between transactions", async () => {
+    const { wallet, slept } = await connect({ "POST /shield": SHIELD_OK }, { random: () => 0.5 });
+    const result = await wallet.shield({ splitInto: 2, delayRangeSec: [10, 20] });
+
+    expect(result.transactions.map((t) => t.delayedSec)).toEqual([15, 15]);
+    expect(slept).toEqual([15_000, 15_000]);
+  });
+
+  it("stops cleanly when the sidecar finds nothing left to shield", async () => {
+    // No txid means no UTXO above the minimum. That is the normal end of a sweep, not a
+    // failure, and treating it as one would make every completed sweep look broken.
+    const { wallet } = await connect({ "POST /shield": { body: {} } });
+    const result = await wallet.shield({ splitInto: 3 });
+
+    expect(result.transactions).toHaveLength(0);
+    expect(result.shieldedZat).toBe("0");
+  });
+
+  it("reports what already went out when a later transaction fails", async () => {
+    // A caller told "it failed" while value is already shielded has been told something
+    // false, and will make its next decision on that falsehood.
+    let calls = 0;
+    const fake = fakeWalletd();
+    running = fake;
+    const url = await fake.start();
+
+    const wallet = await WalletdWallet.connect({
+      url,
+      token: TOKEN,
+      sleep: async () => {},
+      fetch: async (input, init) => {
+        if (String(input).endsWith("/shield")) {
+          calls += 1;
+          if (calls === 1) {
+            return Response.json({ txid: "ab".repeat(32), amountZat: "500000", feeZat: "10000" });
+          }
+          return new Response(JSON.stringify({ code: "send_failed", message: "broadcast failed" }), {
+            status: 502,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        return globalThis.fetch(input, init);
+      },
+    });
+
+    await expect(wallet.shield({ splitInto: 2 })).rejects.toThrow(
+      /after 1 of 2 transaction\(s\); 500000 zatoshis are already shielded/,
+    );
+  });
+
+  it("refuses a nonsense split count before calling the sidecar", async () => {
+    const { wallet, fake } = await connect({ "POST /shield": SHIELD_OK });
+    await expect(wallet.shield({ splitInto: 0 })).rejects.toThrow(/positive integer/);
+    expect(fake.requests.filter((r) => r.path === "/shield")).toHaveLength(0);
+  });
+});
+
+describe("unshield", () => {
+  const UNSHIELD_OK = {
+    body: {
+      txid: "bb1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e7683691",
+      feeZat: "10000",
+    },
+  };
+
+  it("reports the amount that is now public", async () => {
+    const { wallet } = await connect({ "POST /unshield": UNSHIELD_OK });
+    const result = await wallet.unshield({
+      toTransparent: "t1" + "a".repeat(33),
+      amountZat: "5000000",
+    });
+
+    expect(result.publicAmountZat).toBe("5000000");
+    expect(result.feeZat).toBe("10000");
+  });
+
+  it("refuses a shielded destination without calling the sidecar", async () => {
+    // Named here rather than surfaced from whatever the sidecar says about an address it
+    // could not parse.
+    const { wallet, fake } = await connect({ "POST /unshield": UNSHIELD_OK });
+    await expect(
+      wallet.unshield({ toTransparent: "utest1payee", amountZat: "5000000" }),
+    ).rejects.toThrow(/transparent address/);
+    expect(fake.requests.filter((r) => r.path === "/unshield")).toHaveLength(0);
   });
 });

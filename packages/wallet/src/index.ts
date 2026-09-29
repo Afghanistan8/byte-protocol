@@ -11,4 +11,5 @@
 export * from "./types.js";
 export * from "./wallet.js";
 export * from "./mock.js";
+export * from "./autoshield.js";
 export * from "./walletd.js";

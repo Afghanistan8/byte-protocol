@@ -15,6 +15,10 @@ import type {
   ReceivedNote,
   SendRequest,
   SendResult,
+  ShieldRequest,
+  ShieldResult,
+  UnshieldRequest,
+  UnshieldResult,
   WalletBalance,
   WalletStatus,
 } from "./types.js";
@@ -73,7 +77,43 @@ export interface SpendingWallet extends ViewOnlyWallet {
   send(request: SendRequest): Promise<SendResult>;
 }
 
+/**
+ * A wallet that can also move value across the transparent boundary.
+ *
+ * Separate from `SpendingWallet` on purpose. Most of Byte never needs to shield or
+ * unshield — the payer and the payee both work entirely inside Ironwood — and a component
+ * that cannot unshield cannot accidentally publish an amount. An agent's payment path
+ * should be handed a `SpendingWallet`; only the treasury path needs this.
+ */
+export interface ShieldingWallet extends SpendingWallet {
+  /**
+   * Sweep transparent value into Ironwood.
+   *
+   * Implementations MUST compute the ZIP-317 fee from the built proposal rather than
+   * assuming a conventional value, MUST direct the shielded output to Ironwood, and MUST
+   * report every transaction they broadcast, including when a split partially succeeds —
+   * a caller that is told "it failed" while three of five transactions went out has been
+   * told something false.
+   */
+  shield(request?: ShieldRequest): Promise<ShieldResult>;
+
+  /**
+   * Send value out of Ironwood to a transparent address.
+   *
+   * Implementations MUST reject a shielded or unified destination: this operation exists
+   * to leave the shielded pool, and silently accepting a shielded address would make the
+   * caller think they had unshielded when they had not.
+   */
+  unshield(request: UnshieldRequest): Promise<UnshieldResult>;
+}
+
 /** True when a wallet can spend. Useful for asserting a facilitator was given view-only. */
 export function canSpend(wallet: ViewOnlyWallet): wallet is SpendingWallet {
   return typeof (wallet as SpendingWallet).send === "function";
+}
+
+/** True when a wallet can cross the transparent boundary in either direction. */
+export function canShield(wallet: ViewOnlyWallet): wallet is ShieldingWallet {
+  const w = wallet as ShieldingWallet;
+  return typeof w.shield === "function" && typeof w.unshield === "function";
 }

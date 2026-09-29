@@ -14,6 +14,7 @@
 import {
   BYTE_POOL,
   BytePayerError,
+  ByteProtocolError,
   formatZat,
   parseZat,
   sha256Hex,
@@ -24,10 +25,14 @@ import type {
   ReceivedNote,
   SendRequest,
   SendResult,
+  ShieldRequest,
+  ShieldResult,
+  UnshieldRequest,
+  UnshieldResult,
   WalletBalance,
   WalletStatus,
 } from "./types.js";
-import type { SpendingWallet, ViewOnlyWallet } from "./wallet.js";
+import type { ShieldingWallet, SpendingWallet, ViewOnlyWallet } from "./wallet.js";
 
 /**
  * Stand-in fee.
@@ -182,6 +187,53 @@ export class MockChain {
       .reduce((sum, n) => sum + n.valueZat, 0n);
   }
 
+  /**
+   * Live transparent notes at an address, smallest first.
+   *
+   * Smallest first because that is the order shielding wants: sweeping the dust is the
+   * point, and leaving it behind is how a wallet accumulates UTXOs it can never
+   * economically move.
+   */
+  transparentNotesAt(payTo: string, minimum = 0n): Array<{ txid: string; valueZat: bigint }> {
+    return this.#notes
+      .filter((n) => n.payTo === payTo && !n.dropped && n.pool === "transparent")
+      .filter((n) => n.valueZat >= minimum)
+      .sort((a, b) => (a.valueZat < b.valueZat ? -1 : a.valueZat > b.valueZat ? 1 : 0))
+      .map((n) => ({ txid: n.txid, valueZat: n.valueZat }));
+  }
+
+  /** Total transparent value at an address. */
+  transparentAt(payTo: string): bigint {
+    return this.#notes
+      .filter((n) => n.payTo === payTo && !n.dropped && n.pool === "transparent")
+      .reduce((sum, n) => sum + n.valueZat, 0n);
+  }
+
+  /**
+   * Spend transparent value, smallest-UTXO first.
+   *
+   * Returns what it actually consumed, which can be less than asked for. The caller has
+   * to look: a shielding transaction that silently moved less than it reported would make
+   * the returned `shieldedZat` a lie.
+   */
+  consumeTransparent(payTo: string, amount: bigint, minimum = 0n): bigint {
+    let remaining = amount;
+    let taken = 0n;
+    for (const note of this.transparentNotesAt(payTo, minimum)) {
+      if (remaining <= 0n) break;
+      const original = this.#notes.find((n) => n.txid === note.txid && !n.dropped);
+      if (original === undefined) continue;
+
+      // Transparent UTXOs are spent whole. Taking part of one is not a thing the chain
+      // allows, and modelling it as if it were would hide the fee arithmetic that makes
+      // splitting expensive.
+      taken += original.valueZat;
+      remaining -= original.valueZat;
+      original.dropped = true;
+    }
+    return taken;
+  }
+
   /** Mark notes as spent by removing them. Used by the mock's send path. */
   consumeNotes(payTo: string, amount: bigint, minConfirmations = 1): void {
     let remaining = amount;
@@ -236,6 +288,16 @@ export interface MockWalletOptions {
   addressPrefix?: string;
   /** Confirmations a note needs before this wallet will spend it. */
   minSpendConfirmations?: number;
+  /**
+   * How the wallet waits, so tests do not.
+   *
+   * `shield` deliberately delays before broadcasting, and a test suite that actually
+   * slept would be unusable. Injecting the wait keeps the *scheduling* under test — the
+   * delays are recorded and asserted on — while taking zero real time.
+   */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable randomness, so a random delay range is testable. */
+  random?: () => number;
 }
 
 /**
@@ -244,11 +306,13 @@ export interface MockWalletOptions {
  * Minted addresses are sequential and prefixed, which keeps test failures readable —
  * `utest1payee-3` says more than 80 characters of bech32.
  */
-export class MockWallet implements SpendingWallet {
+export class MockWallet implements ShieldingWallet {
   readonly network: ByteNetwork;
   readonly #chain: MockChain;
   readonly #prefix: string;
   readonly #minSpendConfirmations: number;
+  readonly #sleep: (ms: number) => Promise<void>;
+  readonly #random: () => number;
   #addressCounter = 0;
   #minted: string[] = [];
 
@@ -257,6 +321,19 @@ export class MockWallet implements SpendingWallet {
     this.#chain = options.chain;
     this.#prefix = options.addressPrefix ?? "utest1mock";
     this.#minSpendConfirmations = options.minSpendConfirmations ?? 1;
+    this.#sleep =
+      options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.#random = options.random ?? Math.random;
+  }
+
+  /**
+   * The wallet's transparent address.
+   *
+   * Real wallets have many; one is enough to model the thing that matters, which is that
+   * value sitting here is public and unspendable by Byte until it is shielded.
+   */
+  get transparentAddress(): string {
+    return `t1${this.#prefix}-transparent`;
   }
 
   /** Every address this wallet has minted, in order. */
@@ -304,7 +381,11 @@ export class MockWallet implements SpendingWallet {
    * much it had been paid. A real wallet reports the whole account, and so does this.
    */
   async balance(): Promise<WalletBalance> {
-    const addresses = [this.fundingAddress, ...this.#minted];
+    // The transparent address is in the list because value sitting there is real, is
+    // Byte's, and is the thing auto-shielding exists to notice. Leaving it out made the
+    // wallet report a balance of zero while holding a funded transparent UTXO — which is
+    // exactly the state an operator most needs to be told about.
+    const addresses = [this.fundingAddress, this.transparentAddress, ...this.#minted];
     let spendable = 0n;
     let pending = 0n;
     let unusable = 0n;
@@ -354,6 +435,160 @@ export class MockWallet implements SpendingWallet {
     });
     return { txid, feeZat: formatZat(MOCK_FEE_ZAT) };
   }
+
+  /**
+   * Sweep transparent value into Ironwood.
+   *
+   * The split is the interesting part. One deposit becoming one shielding transaction of
+   * the same size a few minutes later is linkable by inspection — you do not need to
+   * break any cryptography, you need to notice that 4.7 ZEC arrived and 4.7 ZEC shielded.
+   * Splitting into several transactions at randomised delays breaks that correlation.
+   *
+   * It is not free: each transaction pays its own fee, so `splitInto: 5` costs five fees
+   * rather than one. That trade is the caller's to make, which is why it is a parameter
+   * rather than a default.
+   */
+  async shield(request: ShieldRequest = {}): Promise<ShieldResult> {
+    const minimum = request.minimumZat !== undefined ? parseZat(request.minimumZat) : MOCK_FEE_ZAT;
+    const splitInto = request.splitInto ?? 1;
+    if (!Number.isInteger(splitInto) || splitInto < 1) {
+      throw new ByteProtocolError("splitInto must be a positive integer");
+    }
+
+    const sources =
+      request.fromTransparent !== undefined && request.fromTransparent.length > 0
+        ? request.fromTransparent
+        : [this.transparentAddress];
+
+    const available = sources.reduce(
+      (sum: bigint, address: string) => sum + this.#chain.transparentAt(address),
+      0n,
+    );
+
+    // Every transaction pays its own fee, so a split that cannot cover its fees is not a
+    // cheaper split — it is a failure. Say so before broadcasting anything.
+    const totalFees = MOCK_FEE_ZAT * BigInt(splitInto);
+    if (available <= totalFees) {
+      throw new BytePayerError(
+        "insufficient_funds",
+        `${available} zatoshis of transparent value cannot cover ${splitInto} shielding ` +
+          `transaction(s) at ${MOCK_FEE_ZAT} zatoshis each`,
+      );
+    }
+
+    const transactions: ShieldResult["transactions"] = [];
+    let shielded = 0n;
+    let fees = 0n;
+
+    // Split by value, giving the remainder to the last transaction rather than dropping it.
+    const perTransaction = available / BigInt(splitInto);
+
+    for (let i = 0; i < splitInto; i++) {
+      const isLast = i === splitInto - 1;
+      const target = isLast ? available - perTransaction * BigInt(splitInto - 1) : perTransaction;
+
+      const delayedSec = this.#delayFor(request.delayRangeSec);
+      if (delayedSec > 0) await this.#sleep(delayedSec * 1000);
+
+      let taken = 0n;
+      for (const address of sources) {
+        if (taken >= target) break;
+        taken += this.#chain.consumeTransparent(address, target - taken, minimum);
+      }
+      if (taken <= MOCK_FEE_ZAT) {
+        // Nothing left worth moving. Report what did happen rather than throwing away the
+        // transactions already broadcast.
+        break;
+      }
+
+      const amount = taken - MOCK_FEE_ZAT;
+      const txid = this.#chain.payInto({
+        payTo: this.fundingAddress,
+        amountZat: formatZat(amount),
+        pool: BYTE_POOL,
+      });
+
+      transactions.push({
+        txid,
+        amountZat: formatZat(amount),
+        feeZat: formatZat(MOCK_FEE_ZAT),
+        delayedSec,
+      });
+      shielded += amount;
+      fees += MOCK_FEE_ZAT;
+    }
+
+    return {
+      transactions,
+      shieldedZat: formatZat(shielded),
+      feeZat: formatZat(fees),
+    };
+  }
+
+  /**
+   * Move value out of Ironwood to a transparent address.
+   *
+   * Publishes the amount. ZIP 318 is explicit about it, and `publicAmountZat` in the
+   * result exists so that nothing downstream can claim it did not know.
+   */
+  async unshield(request: UnshieldRequest): Promise<UnshieldResult> {
+    if (!isTransparentAddressLike(request.toTransparent)) {
+      throw new ByteProtocolError(
+        `unshield needs a transparent address (t1 or t3); ${request.toTransparent} is not one. ` +
+          "Sending to a shielded address here would leave the value shielded while the " +
+          "caller believed it had been unshielded.",
+      );
+    }
+
+    const amount = parseZat(request.amountZat);
+    if (amount === 0n) throw new ByteProtocolError("unshield amount must be greater than zero");
+
+    const required = amount + MOCK_FEE_ZAT;
+    const spendable = this.#chain.spendableAt(this.fundingAddress, this.#minSpendConfirmations);
+    if (spendable < required) {
+      throw new BytePayerError(
+        "insufficient_funds",
+        `need ${required} zatoshis including fee, have ${spendable} spendable`,
+      );
+    }
+
+    this.#chain.consumeNotes(this.fundingAddress, required, this.#minSpendConfirmations);
+    const txid = this.#chain.payInto({
+      payTo: request.toTransparent,
+      amountZat: request.amountZat,
+      pool: "transparent",
+    });
+
+    return {
+      txid,
+      feeZat: formatZat(MOCK_FEE_ZAT),
+      publicAmountZat: request.amountZat,
+    };
+  }
+
+  /** A delay in seconds, drawn uniformly from the range. Zero when no range is given. */
+  #delayFor(range: [number, number] | undefined): number {
+    if (range === undefined) return 0;
+    const [low, high] = range;
+    if (!Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high < low) {
+      throw new ByteProtocolError(
+        `delayRangeSec must be [low, high] with 0 <= low <= high, got ${JSON.stringify(range)}`,
+      );
+    }
+    if (high === low) return low;
+    return Math.floor(low + this.#random() * (high - low + 1));
+  }
+}
+
+/**
+ * A transparent address, by shape.
+ *
+ * `t1` is P2PKH and `t3` is P2SH. Checked by prefix rather than by decoding base58check:
+ * the job here is to catch a shielded or unified address passed by mistake, which the
+ * prefix settles unambiguously, and the mock has no chain to reject a malformed one.
+ */
+export function isTransparentAddressLike(address: string): boolean {
+  return /^t[13]/.test(address);
 }
 
 /**

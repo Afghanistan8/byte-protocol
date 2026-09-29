@@ -19,16 +19,44 @@
  * with no `send` — the same guarantee the mock gives, established over the wire.
  */
 
-import { ByteProtocolError, BytePayerError, isByteNetwork } from "@byte-protocol/core";
+import {
+  ByteProtocolError,
+  BytePayerError,
+  formatZat,
+  isByteNetwork,
+} from "@byte-protocol/core";
 import type { ByteNetwork, Pool } from "@byte-protocol/core";
 import type {
   ReceivedNote,
   SendRequest,
   SendResult,
+  ShieldRequest,
+  ShieldResult,
+  UnshieldRequest,
+  UnshieldResult,
   WalletBalance,
   WalletStatus,
 } from "./types.js";
-import type { SpendingWallet, ViewOnlyWallet } from "./wallet.js";
+import { isTransparentAddressLike } from "./mock.js";
+import type { ShieldingWallet, SpendingWallet, ViewOnlyWallet } from "./wallet.js";
+
+/**
+ * A delay in seconds, drawn uniformly from the range. Zero when no range is given.
+ *
+ * Shared with the mock so the two backends schedule identically: a policy that behaves
+ * differently in tests than in production is not a tested policy.
+ */
+function delayFor(range: [number, number] | undefined, random: () => number): number {
+  if (range === undefined) return 0;
+  const [low, high] = range;
+  if (!Number.isFinite(low) || !Number.isFinite(high) || low < 0 || high < low) {
+    throw new ByteProtocolError(
+      `delayRangeSec must be [low, high] with 0 <= low <= high, got ${JSON.stringify(range)}`,
+    );
+  }
+  if (high === low) return low;
+  return Math.floor(low + random() * (high - low + 1));
+}
 
 export interface WalletdOptions {
   /** Base URL of the sidecar, e.g. `http://127.0.0.1:8137`. */
@@ -47,6 +75,10 @@ export interface WalletdOptions {
    */
   sendTimeoutMs?: number;
   fetch?: typeof globalThis.fetch;
+  /** Injectable waiting, so a shielding delay does not make a test suite sleep. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Injectable randomness, so a random shielding delay is testable. */
+  random?: () => number;
 }
 
 interface WalletdError {
@@ -63,13 +95,15 @@ const PAYER_REFUSALS: Record<string, "wrong_pool_source" | "insufficient_funds">
   insufficient_funds: "insufficient_funds",
 };
 
-export class WalletdWallet implements SpendingWallet {
+export class WalletdWallet implements ShieldingWallet {
   readonly network: ByteNetwork;
   readonly #url: string;
   readonly #token: string;
   readonly #timeoutMs: number;
   readonly #sendTimeoutMs: number;
   readonly #fetch: typeof globalThis.fetch;
+  readonly #sleep: (ms: number) => Promise<void>;
+  readonly #random: () => number;
 
   private constructor(network: ByteNetwork, options: WalletdOptions) {
     this.network = network;
@@ -78,6 +112,9 @@ export class WalletdWallet implements SpendingWallet {
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.#sendTimeoutMs = options.sendTimeoutMs ?? DEFAULT_SEND_TIMEOUT_MS;
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#sleep =
+      options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+    this.#random = options.random ?? Math.random;
   }
 
   /**
@@ -199,6 +236,106 @@ export class WalletdWallet implements SpendingWallet {
     return { txid: response.txid, feeZat: response.feeZat };
   }
 
+  /**
+   * Sweep transparent value into Ironwood.
+   *
+   * The delay and split policy is enforced **here**, in the client, not in the sidecar.
+   * The sidecar builds one transaction at a time and knows nothing about correlation
+   * resistance; the timing decision belongs where the caller can see and configure it,
+   * and keeping it out of the daemon means the daemon has no timer to get wrong.
+   */
+  async shield(request: ShieldRequest = {}): Promise<ShieldResult> {
+    const splitInto = request.splitInto ?? 1;
+    if (!Number.isInteger(splitInto) || splitInto < 1) {
+      throw new ByteProtocolError("splitInto must be a positive integer");
+    }
+
+    const transactions: ShieldResult["transactions"] = [];
+    let shielded = 0n;
+    let fees = 0n;
+
+    for (let i = 0; i < splitInto; i++) {
+      const delayedSec = delayFor(request.delayRangeSec, this.#random);
+      if (delayedSec > 0) await this.#sleep(delayedSec * 1000);
+
+      let response: { txid?: unknown; amountZat?: unknown; feeZat?: unknown };
+      try {
+        response = (await this.#request("POST", "/shield", {
+          body: {
+            ...(request.fromTransparent !== undefined
+              ? { fromTransparent: request.fromTransparent }
+              : {}),
+            ...(request.minimumZat !== undefined ? { minimumZat: request.minimumZat } : {}),
+            // Ask for a fraction of what is available, so the sidecar does not sweep
+            // everything on the first pass and leave the rest of the split with nothing.
+            fraction: 1 / (splitInto - i),
+          },
+          timeoutMs: this.#sendTimeoutMs,
+        })) as { txid?: unknown; amountZat?: unknown; feeZat?: unknown };
+      } catch (error) {
+        // Report what already went out. A caller told "it failed" while three of five
+        // transactions are on the chain has been told something false, and will make its
+        // next decision on that falsehood.
+        if (transactions.length > 0) {
+          throw new ByteProtocolError(
+            `shielding failed after ${transactions.length} of ${splitInto} transaction(s); ` +
+              `${formatZat(shielded)} zatoshis are already shielded ` +
+              `(${transactions.map((t) => t.txid).join(", ")})`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+
+      if (typeof response.txid !== "string") {
+        // Nothing left worth shielding. Not an error: the sidecar found no UTXO above the
+        // minimum, which is the normal end of a sweep.
+        break;
+      }
+      const amountZat = String(response.amountZat ?? "0");
+      const feeZat = String(response.feeZat ?? "0");
+
+      transactions.push({ txid: response.txid, amountZat, feeZat, delayedSec });
+      shielded += BigInt(amountZat);
+      fees += BigInt(feeZat);
+    }
+
+    return {
+      transactions,
+      shieldedZat: formatZat(shielded),
+      feeZat: formatZat(fees),
+    };
+  }
+
+  /**
+   * Send value out of Ironwood to a transparent address.
+   *
+   * Publishes the amount, and the destination is checked here before the request is made
+   * so the refusal names the real reason rather than surfacing whatever the sidecar says
+   * about an address it could not parse.
+   */
+  async unshield(request: UnshieldRequest): Promise<UnshieldResult> {
+    if (!isTransparentAddressLike(request.toTransparent)) {
+      throw new ByteProtocolError(
+        `unshield needs a transparent address (t1 or t3); ${request.toTransparent} is not one`,
+      );
+    }
+
+    const response = (await this.#request("POST", "/unshield", {
+      body: { toTransparent: request.toTransparent, amountZat: request.amountZat },
+      timeoutMs: this.#sendTimeoutMs,
+    })) as { txid?: unknown; feeZat?: unknown };
+
+    if (typeof response.txid !== "string" || typeof response.feeZat !== "string") {
+      throw new ByteProtocolError("byte-walletd returned no txid");
+    }
+    return {
+      txid: response.txid,
+      feeZat: response.feeZat,
+      publicAmountZat: request.amountZat,
+    };
+  }
+
   /** Export the viewing key, to hand a facilitator. */
   async viewingKey(): Promise<string> {
     const response = (await this.#request("GET", "/viewing-key")) as { ufvk?: unknown };
@@ -279,14 +416,13 @@ export class WalletdWallet implements SpendingWallet {
  */
 export async function connectWalletd(
   options: WalletdOptions,
-): Promise<SpendingWallet | ViewOnlyWallet> {
+): Promise<ShieldingWallet | ViewOnlyWallet> {
   const wallet = await WalletdWallet.connect(options);
   if (await wallet.canSpend()) return wallet;
 
-  // Strip `send` rather than returning the same object typed loosely: the guarantee should
-  // hold at runtime too, not only for the compiler.
-  const { send: _send, ...rest } = wallet as unknown as Record<string, unknown>;
-  void _send;
+  // Build a fresh object rather than returning the same one typed loosely. `shield` and
+  // `unshield` are stripped alongside `send`: both move value, and a view-only sidecar
+  // will refuse them anyway, so the type should say so before the HTTP call does.
   return {
     network: wallet.network,
     newInvoiceAddress: () => wallet.newInvoiceAddress(),
