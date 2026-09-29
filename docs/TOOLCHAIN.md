@@ -170,3 +170,18 @@ Recorded 2026-09-29 on the build machine (Windows 11).
 | pnpm | 12.6.0 (installed 2026-09-29) |
 | git | 2.54.0.windows.1 |
 | Rust | **not installed** — required for `crates/byte-walletd` |
+
+## Build verification
+
+Run on the build machine 2026-09-29, after installing Rust 1.98.1 (cargo 1.98.1) and
+Visual Studio BuildTools 2026 18.10.2 with the VC++ x86/x64 workload.
+
+A throwaway crate pinning `zcash_client_backend` 0.24.0, `zcash_client_sqlite` 0.22.0,
+`zcash_keys` 0.16.1, `zcash_protocol` 0.10.6, `zcash_address` 0.13.0 and `zip321` 0.9.0
+compiled and ran cleanly in 1m13s, exit code 0, no warnings. It printed `Ironwood`,
+confirming `zcash_protocol::ShieldedPool::Ironwood` exists at the pinned version rather
+than only in documentation.
+
+`libsqlite3-sys` 0.35.0, `rusqlite` 0.37.0, `orchard` 0.15.5 and `sapling-crypto` 0.7.0
+all built, so the C toolchain is wired up correctly and the sidecar has no known
+Windows-specific blocker.

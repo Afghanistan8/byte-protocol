@@ -20,6 +20,17 @@ Asuzu (`@Afghanistan8`) answered these after the Phase 0 recon.
 | 8 | Testnet ZEC | **Asuzu funds on request** | Build proceeds against the mock wallet; the testnet e2e stays gated behind `BYTE_TESTNET=1` plus wallet env vars until a wallet is funded. |
 | 9 | "Gemini" | **A2A/AP2 adapter covers Google/Gemini agents; the Gemini exchange is Planned** | Decided by Claude, not asked, as the low-stakes default. No exchange rail is implemented, so none is claimed. |
 
+## Round 2 — 2026-09-29
+
+| # | Decision | Choice | Why |
+|---|----------|--------|-----|
+| 10 | User interface | **In scope, built here** | The Phase 0 brief said "No UI — Asuzu plugs his own in later". Asuzu clarified that this *is* the UI he meant to plug in, and supplied a visual reference. It is therefore built in this repository against the owner-only JSON API, not left as an integration point. This supersedes the "No UI" instruction. |
+| 11 | Visual language | **Dark technical instrumentation**, adapted from Asuzu's reference | Near-black ground, hairline measurement grid, corner-bracket framing, wide-tracked uppercase micro-labels, numbered `01.`–`04.` index markers, a single wireframe focal object. Departure from the reference, at Asuzu's instruction: **type is set bolder and at higher contrast**, because the reference's thin low-contrast grey is attractive but hard to read. Readability wins over fidelity. |
+
+The UI is built after the JSON API it consumes exists, so its screens reflect real
+endpoints rather than mock shapes. Ordering: `core` → `server`/`client` → owner-only JSON
+API → UI.
+
 ## Hackathon constraints these were made under
 
 Recorded from <https://thezecathon.com/> on 2026-09-29.
