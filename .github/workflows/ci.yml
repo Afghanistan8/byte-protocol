@@ -38,6 +38,32 @@ jobs:
       - name: Build
         run: pnpm build
 
+  rust:
+    name: Rust (byte-walletd)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/byte-walletd
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/byte-walletd
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
+
 # The testnet end-to-end suite is deliberately absent from this workflow. It spends real
 # TAZ and depends on a funded wallet, so it runs only via scripts/ with BYTE_TESTNET=1
 # set by hand. See docs/TESTNET_RUNS.md for logged runs.

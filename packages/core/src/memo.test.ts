@@ -23,6 +23,19 @@ const fields = {
   payTo: "utest1exampleaddressexampleaddress",
 };
 
+describe("cross-implementation vector", () => {
+  it("matches byte-walletd", () => {
+    // The Rust codec in crates/byte-walletd/src/memo.rs asserts this exact string. The
+    // TypeScript client builds a memo and the Rust sidecar reads it back off the chain,
+    // so a disagreement between them would mean every payment silently failing
+    // verification. Pinning the vector in both makes drift fail a suite immediately
+    // instead of surfacing as an unexplained failure on a real payment.
+    expect(encodeMemo(secret, fields)).toBe(
+      "BYTE1|0123456789abcdef0123456789abcdef|83277bce2698d03296873534c777da14",
+    );
+  });
+});
+
 describe("encodeMemo", () => {
   it("produces the documented shape", () => {
     const memo = encodeMemo(secret, fields);

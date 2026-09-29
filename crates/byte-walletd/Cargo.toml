@@ -1,0 +1,47 @@
+[package]
+name = "byte-walletd"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Asuzu"]
+description = "Byte Protocol wallet sidecar: diversified addresses, shielded Ironwood sends, view-only verification"
+repository = "https://github.com/Afghanistan8/byte-protocol"
+publish = false
+
+[dependencies]
+# Zcash. Versions are pinned and recorded in docs/TOOLCHAIN.md with the date they were
+# checked. The `orchard` feature is what makes Orchard receivers available; Ironwood
+# reuses them, so it is required even though Byte never touches the Orchard pool.
+zcash_keys = { version = "0.16.1", features = ["orchard", "sapling"] }
+zcash_protocol = "0.10.6"
+zcash_address = "0.13.0"
+zcash_primitives = "0.30.1"
+zip321 = "0.9.0"
+orchard = "0.15.5"
+zip32 = "0.2"
+
+# Service
+axum = "0.8.9"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tower-http = { version = "0.6", features = ["limit", "trace"] }
+
+# Plumbing
+anyhow = "1.0.104"
+thiserror = "2.0.21"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
+hex = "0.4.3"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2.6"
+# Wraps key material so it is zeroed on drop and cannot be printed by accident.
+secrecy = "0.10.3"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "test-util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
