@@ -1,0 +1,26 @@
+{
+  "name": "@byte-protocol/rails",
+  "version": "0.1.0",
+  "description": "The funding rail interface: every rail must declare whether its Zcash leg is public",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@byte-protocol/core": "workspace:*"
+  }
+}

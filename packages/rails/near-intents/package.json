@@ -1,0 +1,29 @@
+{
+  "name": "@byte-protocol/rail-near-intents",
+  "version": "0.1.0",
+  "description": "Fund a Byte wallet from another chain via NEAR Intents. The Zcash leg is transparent and public.",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@byte-protocol/core": "workspace:*",
+    "@byte-protocol/rails": "workspace:*"
+  }
+}

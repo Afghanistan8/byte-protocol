@@ -302,6 +302,21 @@ importers:
         specifier: workspace:*
         version: link:../stores
 
+  packages/rails/interface:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../../core
+
+  packages/rails/near-intents:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../../core
+      '@byte-protocol/rails':
+        specifier: workspace:*
+        version: link:../interface
+
   packages/registry:
     dependencies:
       '@byte-protocol/core':

@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/wallet" }, { "path": "./packages/stores" }, { "path": "./packages/server" }, { "path": "./packages/client" }, { "path": "./packages/registry" }, { "path": "./packages/facilitator" }, { "path": "./packages/adapters/x402" }, { "path": "./packages/adapters/mcp" }, { "path": "./packages/adapters/a2a-ap2" }, { "path": "./packages/adapters/langchain" }]
+  "references": [{ "path": "./packages/core" }, { "path": "./packages/wallet" }, { "path": "./packages/stores" }, { "path": "./packages/server" }, { "path": "./packages/client" }, { "path": "./packages/registry" }, { "path": "./packages/facilitator" }, { "path": "./packages/adapters/x402" }, { "path": "./packages/adapters/mcp" }, { "path": "./packages/adapters/a2a-ap2" }, { "path": "./packages/adapters/langchain" }, { "path": "./packages/rails/interface" }, { "path": "./packages/rails/near-intents" }]
 }
