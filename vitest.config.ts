@@ -16,6 +16,8 @@ export default defineConfig({
       "@byte-protocol/stores": src("stores"),
       "@byte-protocol/server": src("server"),
       "@byte-protocol/client": src("client"),
+      "@byte-protocol/registry": src("registry"),
+      "@byte-protocol/facilitator": src("facilitator"),
     },
   },
   test: {

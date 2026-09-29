@@ -1,0 +1,25 @@
+{
+  "name": "@byte-protocol/registry",
+  "version": "0.1.0",
+  "description": "Byte Agent Cards: schema, signing, verification and resolution",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {"@byte-protocol/core":"workspace:*","@noble/curves":"^2.4.0","zod":"^4.6.5"},
+  "devDependencies": {}
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@byte-protocol/facilitator",
+  "version": "0.1.0",
+  "description": "View-only verification as a service: holds a viewing key, never a spending key",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@byte-protocol/core": "workspace:*",
+    "@byte-protocol/server": "workspace:*",
+    "@byte-protocol/wallet": "workspace:*"
+  },
+  "devDependencies": {
+    "@byte-protocol/stores": "workspace:*"
+  }
+}

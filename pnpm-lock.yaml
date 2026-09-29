@@ -207,6 +207,34 @@ importers:
         specifier: ^4.6.5
         version: 4.6.5
 
+  packages/facilitator:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../core
+      '@byte-protocol/server':
+        specifier: workspace:*
+        version: link:../server
+      '@byte-protocol/wallet':
+        specifier: workspace:*
+        version: link:../wallet
+    devDependencies:
+      '@byte-protocol/stores':
+        specifier: workspace:*
+        version: link:../stores
+
+  packages/registry:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../core
+      '@noble/curves':
+        specifier: ^2.4.0
+        version: 2.4.0
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
+
   packages/server:
     dependencies:
       '@byte-protocol/core':
