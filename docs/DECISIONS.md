@@ -14,7 +14,7 @@ Asuzu (`@Afghanistan8`) answered these after the Phase 0 recon.
 | 2 | Scope for v1 | **Defensible core** | `core`, `wallet`, `client`, `server`, `stores`, `facilitator`, `registry`, four adapters (x402, MCP, A2A/AP2, LangChain), the NEAR Intents rail in dry-run, examples, and a real testnet e2e. Everything listed as supported has code *and* a passing test. Remaining adapters and rails are documented as Planned. |
 | 3 | Networks | **Testnet only** | One network, fully exercised. Nothing in the repo claims mainnet readiness that has not been proven against a real chain. |
 | 4 | Package manager | **pnpm** | Installed 12.6.0 on 2026-09-29. Better workspace ergonomics for a repo with this many packages. |
-| 5 | License | **MIT** | Shortest and most permissive. Also the clearest separation from MARC's BUSL-1.1. |
+| 5 | License | **MIT** | Shortest and most permissive, and the least friction for anyone reading or reusing the repository. |
 | 6 | Protocol fee in v1 | **Zero** | No fee output, no treasury address, nothing to reconcile across README, SPEC, code and CLI help. Third-party rail fees (e.g. NEAR Intents) are pass-through and are never described as Byte's. |
 | 7 | NEAR Intents rail | **Dry-run, with the transparent leg labelled everywhere** | Implemented against mocked HTTP fixtures with `dry: true`. The `t1`/`t3` leg is public and is described as public in README, `SECURITY.md` and `RAILS.md`. No live value moves during judging. |
 | 8 | Testnet ZEC | **Asuzu funds on request** | Build proceeds against the mock wallet; the testnet e2e stays gated behind `BYTE_TESTNET=1` plus wallet env vars until a wallet is funded. |

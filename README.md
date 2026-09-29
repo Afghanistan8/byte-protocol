@@ -231,6 +231,9 @@ For the sidecar and a real testnet payment, see
 | [DECISIONS.md](docs/DECISIONS.md) | What was chosen and why |
 | [RAILS.md](docs/RAILS.md) | How value gets in, and what each route exposes |
 | [TESTNET_RUNS.md](docs/TESTNET_RUNS.md) | Real transactions, logged |
+| [API.md](docs/API.md) | All three API surfaces, with real request and response bodies |
+| [ROADMAP.md](docs/ROADMAP.md) | What is next, what is deliberately not being built, what risks are carried |
+| [CONSISTENCY_AUDIT.md](docs/CONSISTENCY_AUDIT.md) | Every claim traced to its code and its test |
 
 ---
 
