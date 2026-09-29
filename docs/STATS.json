@@ -1,0 +1,11 @@
+{
+  "measuredAt": "2026-09-29T21:30:07.898Z",
+  "typescript": {
+    "files": 26,
+    "tests": 513
+  },
+  "rust": {
+    "tests": 60
+  },
+  "total": 573
+}
