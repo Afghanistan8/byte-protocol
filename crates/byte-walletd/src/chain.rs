@@ -360,9 +360,26 @@ async fn birthday_at(
         .map_err(|e| ChainError::Lightwalletd(format!("building birthday: {e:?}")))
 }
 
+/// Parse a transaction identifier written the way everything displays it.
+///
+/// Zcash displays a txid **byte-flipped** relative to its internal representation:
+/// `TxId`'s own `Debug` impl notes that the flipped string "is more useful than the raw
+/// bytes, because we can look that up in RPC methods and block explorers". So every txid a
+/// payer quotes, an explorer shows, or `TxId::to_string` produces is in display order,
+/// while `TxId::from_bytes` expects internal order.
+///
+/// Missing this reversal makes every lookup silently return nothing: the transaction is
+/// there, mined, with the right memo, and the verifier asks for it under a name that does
+/// not exist. `round_trips_a_displayed_txid` is the test that pins it.
 fn parse_txid(hex_txid: &str) -> Result<zcash_protocol::TxId, WalletStateError> {
-    let bytes = hex::decode(hex_txid)
+    let mut bytes = hex::decode(hex_txid)
         .map_err(|e| WalletStateError::ChainAccess(format!("txid must be hex: {e}")))?;
+    if bytes.len() != 32 {
+        return Err(WalletStateError::ChainAccess(
+            "txid must be 32 bytes".into(),
+        ));
+    }
+    bytes.reverse();
     let array: [u8; 32] = bytes
         .try_into()
         .map_err(|_| WalletStateError::ChainAccess("txid must be 32 bytes".into()))?;
@@ -426,6 +443,32 @@ mod tests {
     fn parses_a_well_formed_txid() {
         let hex_txid = "a".repeat(64);
         assert!(parse_txid(&hex_txid).is_ok());
+    }
+
+    #[test]
+    fn round_trips_a_displayed_txid() {
+        // The test that would have caught the byte-order bug. A txid quoted by a payer,
+        // an explorer or TxId::to_string is in display order; from_bytes wants internal
+        // order. Without the reversal this asserts unequal, and in production every
+        // lookup silently finds nothing.
+        let txid = zcash_protocol::TxId::from_bytes([
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+            0x1d, 0x1e, 0x1f, 0x20,
+        ]);
+        assert_eq!(parse_txid(&txid.to_string()).unwrap(), txid);
+    }
+
+    #[test]
+    fn a_displayed_txid_is_not_its_own_internal_bytes() {
+        // Guards against the reversal being quietly dropped: if display order and internal
+        // order were the same, the round-trip test above would pass either way.
+        let txid = zcash_protocol::TxId::from_bytes([
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c,
+            0x1d, 0x1e, 0x1f, 0x20,
+        ]);
+        assert_ne!(txid.to_string(), hex::encode(txid.as_ref()));
     }
 
     #[test]

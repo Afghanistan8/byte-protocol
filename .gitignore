@@ -32,3 +32,4 @@ Thumbs.db
 crates/byte-walletd/.env.testnet
 crates/byte-walletd/.invoice.env
 crates/byte-walletd/send.json
+crates/byte-walletd/verify*.json
