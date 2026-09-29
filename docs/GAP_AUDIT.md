@@ -1,304 +1,270 @@
 # Gap audit
 
-What Byte Protocol actually has, measured against the F1–F12 feature checklist, on
-**29 September 2026**. Nothing below is aspirational: a row says `Done` only when there is
-code *and* a passing test behind it, and the test is named.
+What Byte Protocol has, measured against the F1–F12 feature checklist and the defects an
+independent review found in `main` at `9f5fc87`. A row says `Done` only when there is code
+**and** a passing test behind it, and the test is named. Anything else says what is missing.
+
+Last updated 29 September 2026, after the Part A repairs. Part B rows are still open and say
+so.
 
 ## How this was measured
 
+Real numbers come from `docs/STATS.json`, written by `pnpm stats` from live runs of both
+suites. Nothing in this file is a count somebody typed.
+
 ```
-pnpm vitest run     →  19 files, 368 tests, 368 passed
-tsc --build --force →  exit 0, no errors
-cargo test          →  56 passed, 0 failed (lib), 0 doc-tests
+pnpm test        →  all TypeScript suites passing (see docs/STATS.json)
+tsc --build      →  clean
+cargo test --lib →  all byte-walletd tests passing (see docs/STATS.json)
 ```
 
-Every `Not feasible yet` row cites the primary source that closed the question. Where a
-source disagrees with the brief I followed the source and said so.
-
----
+`Not feasible yet` rows cite the primary source that closed the question. Where a source
+disagreed with a brief, I followed the source and said so.
 
 ## Status counts
 
+<!--gap-counts-->
 | Status | Count |
 |--------|------:|
-| `Done` | 31 |
-| `Partial` | 14 |
+| `Done` | 74 |
+| `Partial` | 12 |
 | `Missing` | 55 |
-| `Not feasible yet` | 3 |
+| `Not feasible yet` | 4 |
+| **Total sub-items** | **145** |
+<!--/gap-counts-->
 
 ---
 
-## F1 — Shielded payments
+## Part A: defects from the independent review
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Agent-to-agent payments are shielded Ironwood transfers | `Done` | `core/src/pool.ts` `isAcceptedPool`; `server/src/verifier.ts`; `byte-walletd/src/chain.rs` `send` | `server.test.ts` "rejects a payment in the wrong pool"; two real testnet payments in `TESTNET_RUNS.md` | — |
-| Refuses to **pay from** transparent or Orchard sources | `Partial` | `wallet/src/mock.ts` `send` throws `wrong_pool_source`; `core/src/errors.ts` defines the reason | `mock.test.ts` | **The real backend does not enforce it.** `propose_standard_transfer_to_address` (signature confirmed on docs.rs for `zcash_client_backend` 0.24.0) has no parameter restricting *source* pools — only `fallback_change_pool`, which governs change. `SpendingWallet.send` documents this as a MUST. |
-| One transaction carries both value and memo | `Done` | `chain.rs` `send` passes `Some(memo_bytes)` into a single proposal | `TESTNET_RUNS.md` run 2 | — |
-| Document that this removes the two-transaction non-atomicity problem | `Missing` | — | — | Not stated in `SPEC.md` or `SECURITY.md` |
-| Document that no "silent failure" trick is needed | `Missing` | — | — | An under-funded Zcash tx cannot be built and leaks no balance; nowhere written down |
+| **A1** A fee invoice could not be paid by Byte's own client | `Done` | `wallet/src/types.ts` `SendRequest` (union) and `sendOutputs`; `client/src/payer.ts` pays every output and guards the total; `byte-walletd` `send_to` builds one `zip321::TransactionRequest` via `propose_transfer` with `SpendPolicy::shielded_pools([Ironwood])` | `client/src/fee-loop.test.ts` (7, over real HTTP); `server/src/fee.test.ts` now pays through `BytePayer`; `walletd.test.ts` "sends several outputs as one transaction" | **A real testnet payment carrying a fee has not been run.** Needs Asuzu (funds). Not yet in `TESTNET_RUNS.md` |
+| **A1b** `ByteFacilitator` could not charge the fee at all (found during A8) | `Done` | `facilitator/src/facilitator.ts` takes `fee` and `feeWallet`, publishes terms in `info().fee`, refuses a fee without a `feeWallet` and a spendable `feeWallet` | `facilitator.test.ts` "a facilitator that charges a fee" (7) | — |
+| **A2** Testnet already computed post-NU7 25 s block times | `Done` | `core/src/network.ts` `blockTargetSeconds(branchId)`; `byte-walletd` `/status` reports `consensusBranchId` from `GetLightdInfo` | `core/src/network.test.ts` (13); `server.test.ts` "Retry-After follows the chain's consensus branch" (3), including testnet height 4,414,380 → 75 s | **NU7 branch `0x77190AD9` (ZIP 259, Draft) is not yet observable on a live chain**, and both activation heights are `TBD` in ZIP 259. Recorded in `TOOLCHAIN.md` |
+| **A3** Dashboard claimed a PCZT spend path that does not exist | `Done` | `apps/site/app/index.html`, `apps/site/README.md`: claims removed, snap described as read-only | Removed by review; the site consistency grep finds no `signPczt` | Restore only with B4 and a verified snap method |
+| **A4** Wallet list claimed wallets could pay that may not be able to | `Done` | `apps/site/app/index.html` `WALLETS` has an Ironwood column: Verified / Unverified / Not supported / Discontinued, each with a version and date | `docs/TOOLCHAIN.md` cites the source per row. Data, not code: no test drives the table | **The published MetaMask snap is v0.3.0 from 6 Feb 2026, before Ironwood.** Brave, Zucchini, Nighthawk, Zelcore and Ledger stay Unverified |
+| **A5** Stale test counts | `Done` | `scripts/stats.ts` writes `docs/STATS.json` and rewrites marked counts in README and the site | `scripts/stats-consistency.test.ts` (10), mutation-tested | Detects surfaces drifting from `STATS.json`, not `STATS.json` drifting from reality. Re-run `pnpm stats` after adding tests |
+| **A6** README contradicted itself and lagged the code | `Done` | `README.md` package table, "Not hidden" list, USD price-risk section | `stats-consistency.test.ts` covers the counts; the wording is checked by the consistency audit below | — |
+| **A7** Site fee line conflicted with F4 | `Done` | `apps/site/index.html`, `README.md` Fees, `docs/DECISIONS.md` #6/#6b, `core/src/fee.ts` | Consistency audit row "Fee statements agree" | — |
+| **A8** Audits out of date | `Done` | This file and `CONSISTENCY_AUDIT.md`; `scripts/gap-counts.ts` computes the counts from the rows | `stats-consistency.test.ts` "states the status counts its own rows add up to" and "claims Done only where a test is named" | Must be re-run after Part B |
+| **A9** Nothing issued a receipt at settlement (found during A8) | `Done` | `server/src/verifier.ts` `receipts` option signs and stores a receipt on success and reports `receiptError` rather than stranding a paid payer | `server.test.ts` "receipts are issued at settlement" (5) | **The x402, MCP and A2A gates do not yet hand the receipt back in the response.** That is B7 |
 
-## F2 — USD-priced invoices paid in ZEC
-
-| Item | Status | Where it lives | Test that proves it | What's missing |
-|------|--------|----------------|---------------------|----------------|
-| `priceUsd` on the merchant's invoice | `Missing` | — | — | Everything |
-| `PriceSource { getZecUsd(): {price, source, at} }` | `Missing` | — | — | Interface does not exist |
-| NEAR Intents price implementation | `Missing` | — | — | **Endpoint verified**: `GET /v0/tokens` returns `price` (number, USD) and `priceUpdatedAt` (date-time) per token |
-| A second independent source | `Missing` | — | — | Needs a decision — see the questions below |
-| Mock price source for tests | `Missing` | — | — | — |
-| `maxPriceAgeSec` guardrail | `Missing` | — | — | — |
-| `maxDeviationBps` guardrail between two sources | `Missing` | — | — | — |
-| Quote locked into the invoice until `expiresAt` | `Missing` | — | — | `StoredInvoice` has no price fields |
-| Payment judged only against `amountZat`, never re-priced | `Done` | `server/src/verifier.ts` compares `settling.valueZat` to `invoice.amountZat` only | `server.test.ts` underpayment cases | — |
-| 402 body and receipts carry both USD and ZEC | `Missing` | — | — | `BytePaymentRequirements` and `ReceiptBody` carry zatoshis only |
-| README/SPEC state that settlement is in ZEC and who carries price risk | `Missing` | — | — | — |
-| Typed `asset` extension point for future ZSAs, marked Planned | `Partial` | `core/src/invoice.ts` `asset: z.literal("ZEC")` | `invoice.test.ts` rejects `"USDC"` | It is a closed literal, not an extension point, and nothing marks ZSAs Planned |
-
-## F3 — Shield / unshield
+## F1: Shielded payments
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| `wallet.shield({ fromTransparent, splitInto?, delayRangeSec? })` | `Missing` | — | — | No method on `SpendingWallet`, no `/shield` route on the sidecar |
-| `wallet.unshield({ toTransparent, amountZat })` | `Missing` | — | — | Same |
-| ZIP-317 network fee shown in the response, computed not hardcoded | `Partial` | `chain.rs` reads `proposal.steps().last().balance().fee_required()` for `send` | `walletd.test.ts` asserts `feeZat` is returned | No shield/unshield operation exists to report it on |
-| Auto-shield transparent receipts, random delay, optional split | `Missing` | — | — | Named in `RAILS.md` as what a rail cannot fix, but never implemented |
-| Document that this reduces linkability rather than removing it | `Done` | `RAILS.md` "What a rail cannot fix" | — | — |
+| Agent-to-agent payments are shielded Ironwood transfers | `Done` | `core/src/pool.ts`; `server/src/verifier.ts`; `byte-walletd/src/chain.rs` | `server.test.ts` wrong-pool cases; two real testnet payments in `TESTNET_RUNS.md` | — |
+| Refuses to pay from transparent or Orchard sources | `Done` | `chain.rs` `SpendPolicy::shielded_pools([Ironwood])` **and** `assert_ironwood_funded`; `mock.ts` throws `wrong_pool_source` | `chain.rs` unit tests (4) on `ironwood_only_refusal`; `mock.test.ts`; `walletd.test.ts` "raises wrong_pool_source" | No real-chain test with a wallet holding mixed-pool notes. The walk over a live `Proposal` is not unit-tested |
+| One transaction carries both value and memo | `Done` | `chain.rs` `send_to` | `TESTNET_RUNS.md` run 2 | — |
+| Documented: no two-transaction window | `Done` | `docs/SPEC.md` §5.6 | — | — |
+| Documented: no "silent failure" trick needed | `Done` | `docs/SPEC.md` §5.6 | — | — |
 
-## F4 — Fees
-
-| Item | Status | Where it lives | Test that proves it | What's missing |
-|------|--------|----------------|---------------------|----------------|
-| Byte protocol fee = 0 by default | `Done` | No fee output anywhere; `DECISIONS.md` #6 | `grep` finds no treasury address or fee output | — |
-| Says "no protocol fee", never "free" | `Done` | `README.md` §Fees | Grep sweep across `*.ts`, `*.rs`, `*.md`, `*.html` | The one remaining "for free" (`README.md:9`) is about information being published at no cost — a different sense, left alone |
-| Optional `facilitatorFee: { bps, minZat, payTo }` | `Missing` | — | — | No config, no plumbing |
-| Fee added as a second ZIP-321 output | `Missing` | `core/src/zip321.ts` builds single-output URIs **and `parseZip321` rejects the indexed multi-payment form outright** | `zip321.test.ts` | Both the builder and the parser must learn the two-output form |
-| Facilitator verifies both outputs before approving | `Missing` | — | — | — |
-| Documented as facilitator-enforced, not on-chain | `Missing` | — | — | — |
-| Escrow service fee under the same honesty rule | `Missing` | — | — | See F7 |
-| Fee statements identical across README, SPEC, API.md, CLI, 402 bodies, code | `Done` | `CONSISTENCY_AUDIT.md` | Grep sweep | — |
-
-## F5 — Off-chain verification
+## F2: USD-priced invoices paid in ZEC
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Per-invoice diversified unified address | `Done` | `byte-walletd/src/keys.rs` cursor; `server/src/issuer.ts` | `keys.rs` "the cursor never repeats an address"; `server.test.ts` two invoices never share an address | — |
-| Memo `BYTE1｜invoiceId｜hmac` | `Done` | `core/src/memo.ts`, `byte-walletd/src/memo.rs` | 33 TS + 8 Rust memo tests, pinned cross-language vector | — |
-| Verified with a view-only key (UFVK/UIVK) | `Done` | `state.rs` `from_ufvk`; `facilitator.ts` refuses a spending wallet | `state.rs` "a viewing wallet can still mint invoice addresses"; `facilitator.test.ts` | — |
-| The verifier sees the exact amount, not a committed minimum | `Done` | `verifier.ts` compares `valueZat` | `server.test.ts` | — |
-| Replay protection via atomic `consume` | `Done` | `core/src/store.ts` contract; `stores/src/memory.ts` | `memory.test.ts` concurrency case | — |
-| Redis store | `Missing` | — | — | **And four places claim it already ships** — see contradictions |
-| Signed Ed25519 receipts | `Done` | `core/src/receipt.ts` | `receipt.test.ts` (15 tests) | — |
-| Optional per-transaction disclosure | `Not feasible yet` | — | — | **ZIP 311 "Zcash Payment Disclosures" is `Draft`**; ZIP 303 (Sprout Payment Disclosure) is `Withdrawn`. No finalised standard and no Ironwood implementation to build against. Ship receipts + viewing-key disclosure; mark this Planned with this reason. |
-| Incoming-viewing-key disclosure path | `Missing` | `byte-walletd` exposes `GET /viewing-key` returning the **full UFVK** | `walletd.test.ts` | A UFVK is more capability than a disclosure needs; a scoped IVK export is missing |
+| `priceUsd` on the invoice | `Done` | `core/src/price.ts`; `server/src/issuer.ts` `issueUsd` | `server.test.ts` "USD-priced invoices" (7) | — |
+| `PriceSource` interface | `Done` | `core/src/price.ts` | `pricing.test.ts` | — |
+| NEAR Intents price source | `Done` | `pricing/src/sources.ts` `NearIntentsPriceSource` | `pricing.test.ts` (native ZEC entry, not a bridged one) | Verified against the OpenAPI shape and mocks; **not run against the live service** |
+| Second independent source | `Done` | `KrakenPriceSource` | `pricing.test.ts` (4) | **`api.kraken.com` was unreachable from the build machine, so this is verified against Kraken's documented response shape only** |
+| Mock price source | `Done` | `MockPriceSource` | `pricing.test.ts` | — |
+| `maxPriceAgeSec` | `Done` | `pricing/src/guarded.ts` | `pricing.test.ts` stale, future, untimestamped | — |
+| `maxDeviationBps` | `Done` | `guarded.ts` | `pricing.test.ts` disagreement, failed secondary | — |
+| Quote locked into the invoice | `Done` | `core/src/invoice.ts` `PriceQuote`; `StoredInvoice.price` | `server.test.ts` "stores the quote" | — |
+| Payment judged against `amountZat` only | `Done` | `verifier.ts` | `server.test.ts` "verified against the locked amount, never re-priced" | — |
+| 402 body and receipts carry both USD and ZEC | `Done` | `BytePaymentRequirements.price`; `ReceiptBody.priceUsd`/`zecUsd` (domain `byte-receipt-v2`) | `receipt.test.ts` priced receipts (4); `server.test.ts` "carries the USD denomination" | — |
+| README and SPEC state ZEC settlement and price risk | `Done` | `README.md` "Pricing in dollars"; `SPEC.md` §5.4 | — | — |
+| Typed `asset` extension point, ZSAs Planned | `Partial` | `core/src/invoice.ts` `asset: z.literal("ZEC")`, documented in `SPEC.md` §5.4 | `invoice.test.ts` rejects `"USDC"` | A closed literal, not a union. ZSAs are not on mainnet, so this is Planned |
 
-## F6 — Delegation and spend limits
+## F3: Shield / unshield
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Spend guard: per-call cap | `Done` | `client/src/guard.ts` | `guard.test.ts` | — |
-| Spend guard: rolling daily cap | `Done` | `guard.ts` `#spentSince` | `guard.test.ts` | — |
-| Spend guard: per-host allowlist | `Done` | `guard.ts` `hostOf` | `guard.test.ts` "an allowlist does not imply subdomains" | — |
-| Spend guard: approval hook | `Done` | `guard.ts` | `guard.test.ts` "a hook that throws denies" | — |
-| **Append-only** audit log | `Partial` | `guard.ts` `#audit`, bounded ring of 1000 | `guard.test.ts` | It is a lossy ring buffer, not append-only, and it does not survive a restart |
-| Split build/sign with PCZT | `Missing` | `pczt` is present **transitively only** — no Byte code uses it | — | Feasible: `pczt` 0.9.3 (2026-08-07); librustzcash issue #2524 (unwitnessed Orchard/Ironwood PCZT spends) is **closed**, and records that *"the Signer needs only `alpha`, `rk`, and the sighash"* |
+| `wallet.shield` | `Partial` | `wallet/src/walletd.ts`, `mock.ts`; `byte-walletd` `POST /shield` | `shield.test.ts` (17); `walletd.test.ts` shield (7) | **The sidecar route compiles and is wired but no test drives it, and no real transparent UTXO has been shielded on testnet.** Needs Asuzu (funds) |
+| `wallet.unshield` | `Partial` | `walletd.ts`, `mock.ts`; `POST /unshield` | `shield.test.ts`; `walletd.test.ts` unshield (2) | As above |
+| ZIP-317 fee shown, computed | `Done` | `chain.rs` reads `proposal.steps().last().balance().fee_required()` | `walletd.test.ts` returns `feeZat` | The mock uses a flat fee |
+| Auto-shield with random delay and split | `Done` | `wallet/src/autoshield.ts` `AutoShielder` | `shield.test.ts` (5) | Splitting needs several transparent addresses; the client refuses when it cannot honour `splitInto` |
+| Documented: reduces linkability, does not remove it | `Done` | `RAILS.md`, `wallet/src/types.ts` `ShieldRequest` | — | — |
+
+## F4: Fees
+
+| Item | Status | Where it lives | Test that proves it | What's missing |
+|------|--------|----------------|---------------------|----------------|
+| Protocol fee = 0 | `Done` | No output pays Byte anywhere | Consistency audit | — |
+| "No protocol fee", never "free" | `Done` | README Fees, site, DECISIONS | Consistency audit grep | `README.md:9` "for free" is about published information, a different sense |
+| `facilitatorFee { bps, minZat, payTo }` | `Done` | `core/src/fee.ts`; `InvoiceIssuer`; `ByteFacilitator` | `fee.test.ts` (core 9, server 12); `facilitator.test.ts` (7) | — |
+| Fee as a second ZIP-321 output | `Done` | `core/src/zip321.ts` `buildZip321Multi` / `parseZip321Multi` | `zip321.test.ts` (10) | — |
+| Facilitator verifies both outputs | `Done` | `verifier.ts` `#checkFee` | `fee.test.ts`, `fee-loop.test.ts` | — |
+| Documented as facilitator-enforced, not on-chain | `Done` | README, SPEC §5.5, API.md, DECISIONS #6b, `fee.ts` | Consistency audit | — |
+| Escrow service fee, same honesty rule | `Missing` | — | — | Depends on F7 |
+
+## F5: Off-chain verification
+
+| Item | Status | Where it lives | Test that proves it | What's missing |
+|------|--------|----------------|---------------------|----------------|
+| Per-invoice diversified UA | `Done` | `keys.rs`; `issuer.ts` | `keys.rs` cursor tests; `server.test.ts` | — |
+| Memo `BYTE1|invoiceId|hmac` | `Done` | `memo.ts`, `memo.rs` | 33 TS + 8 Rust, pinned cross-language vector | — |
+| Verified with a view-only key | `Done` | `state.rs` `from_ufvk`; facilitator refuses a spender | `facilitator.test.ts` | — |
+| Verifier sees the exact amount | `Done` | `verifier.ts` | `server.test.ts` | — |
+| Replay protection via atomic `consume` | `Done` | `core/src/store.ts`; `stores/src/memory.ts` | `memory.test.ts` concurrency case | Memory only: see the next row |
+| Durable store | `Missing` | — | — | A restart re-opens the replay window (B2). Needs Asuzu to choose SQLite or Redis |
+| Signed Ed25519 receipts, issued at settlement | `Partial` | `core/src/receipt.ts`; `verifier.ts` `receipts` option | `receipt.test.ts` (21); `server.test.ts` receipts (5) | The gates do not hand the receipt back to the payer (B7) |
+| Per-transaction disclosure | `Not feasible yet` | — | — | ZIP 311 "Zcash Payment Disclosures" is `Draft`; ZIP 303 is `Withdrawn` |
+| Scoped incoming-viewing-key export | `Missing` | `GET /viewing-key` returns the full UFVK | — | B3 |
+
+## F6: Delegation and spend limits
+
+| Item | Status | Where it lives | Test that proves it | What's missing |
+|------|--------|----------------|---------------------|----------------|
+| Per-call cap | `Done` | `client/src/guard.ts` | `guard.test.ts`; `fee-loop.test.ts` (counts the fee) | — |
+| Rolling daily cap | `Done` | `guard.ts` | `guard.test.ts` | — |
+| Per-host allowlist | `Done` | `guard.ts` | `guard.test.ts` | — |
+| Approval hook | `Done` | `guard.ts` | `guard.test.ts` | — |
+| Append-only, persistent audit log | `Partial` | `guard.ts` bounded in-memory ring | `guard.test.ts` | Lossy, not append-only, lost on restart (B4) |
+| Split build/sign with PCZT | `Missing` | `pczt` is transitive only | — | B4. Feasible: librustzcash #2524 is closed |
 | Threshold custody with FROST | `Not feasible yet` | — | — | See F7 Mode A |
-| Never described as "on-chain allowances" | `Done` | — | Grep finds no occurrence of "allowance" anywhere | — |
+| Never described as "on-chain allowances" | `Done` | — | Grep finds none | — |
 
-## F7 — Escrow for agent jobs
-
-| Item | Status | Where it lives | Test that proves it | What's missing |
-|------|--------|----------------|---------------------|----------------|
-| Mode A: shielded 2-of-3 FROST | `Not feasible yet` | — | — | **`ZcashFoundation/frost` ships no Pallas ciphersuite.** Its workspace is `frost-core`, `ed25519`, `ed448`, `p256`, `ristretto255`, `secp256k1`, `secp256k1-tr`, `rerandomized`. `reddsa` 0.6.1 exposes only `batch`, `orchard`, `sapling` and states that *"ZIP-312 re-randomized FROST support will be provided by the frost repository"* — which does not provide it. A "FROST Shielded Multi-Sig SDK" ZCG **grant application** exists, i.e. this is future work. |
-| Mode B: transparent 2-of-3 P2SH multisig, labelled non-private | `Missing` | — | — | Everything |
-| Job lifecycle state machine | `Missing` | — | — | `created → funded → delivered → released/refunded/disputed → resolved` |
-| Timeouts on each state | `Missing` | — | — | — |
-| `JobStore` | `Missing` | — | — | — |
-| Funding and release are real Zcash transactions | `Missing` | — | — | — |
-| Optional escrow fee enforced by the arbiter's co-signing policy | `Missing` | — | — | — |
-| Document that buyer + seller can bypass the arbiter and its fee | `Missing` | — | — | — |
-| Signed job receipts at each transition | `Missing` | — | — | `receipt.ts` signs payments only |
-
-## F8 — Agent identity and reputation
+## F7: Escrow for agent jobs
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Signed Agent Card JSON | `Done` | `registry/src/card.ts` | `card.test.ts` (24 tests) | — |
-| Served at `/.well-known/byte-agent.json` | `Partial` | `WELL_KNOWN_PATH = "/.well-known/byte-agent-card"` | `card.test.ts` | Path differs from the brief. Needs a decision, not a guess — see questions |
-| Card carries agentId, endpoints, payment UA, schemes, public signing key | `Partial` | `AgentCardBodySchema` | `card.test.ts` | `endpoint` is singular, not a list; the signing key is `issuer` and is present |
-| A2A agent-card extension | `Missing` | — | — | The A2A adapter neither publishes nor consumes a card |
-| Reputation computed off-chain from signed receipts | `Missing` | — | — | — |
-| Signed feedback type | `Missing` | — | — | — |
-| Merkle-root anchoring into a self-send memo | `Missing` | — | — | — |
-| Document that the anchor is private by default and proves existence-at-time only to disclosees | `Missing` | — | — | — |
-| Public OP_RETURN-style anchor | `Missing` | — | — | Needs verification that a transparent public anchor is standard on Zcash today before it is offered at all |
+| Mode A: shielded 2-of-3 FROST | `Not feasible yet` | — | — | `ZcashFoundation/frost` workspace has no Pallas or re-randomized Orchard ciphersuite (`frost-core`, `ed25519`, `ed448`, `p256`, `ristretto255`, `secp256k1`, `secp256k1-tr`, `rerandomized`); `reddsa` 0.6.1 has no FROST module |
+| Mode B: transparent 2-of-3 P2SH | `Missing` | — | — | B5, labelled non-private |
+| Job state machine | `Missing` | — | — | B5 |
+| Timeouts | `Missing` | — | — | B5 |
+| `JobStore` | `Missing` | — | — | B5 |
+| Funding and release are real Zcash transactions | `Missing` | — | — | B5 |
+| Arbiter fee via co-signing policy | `Missing` | — | — | B5 |
+| Buyer plus seller can bypass the arbiter: documented | `Missing` | — | — | B5 |
+| Signed job receipts | `Missing` | — | — | B5 |
 
-## F9 — NEAR Intents, in and out
-
-### Funding (any asset → shielded ZEC)
+## F8: Agent identity and reputation
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| `GET /tokens` → ZEC assetId | `Done` | `rail-near-intents/src/rail.ts` `zecAssetId` | `rail.test.ts` "resolves the ZEC asset from /tokens rather than hardcoding it" | — |
-| `POST /quote` with `EXACT_OUTPUT`, `ORIGIN_CHAIN`, recipient, refundTo, slippage, deadline | `Done` | `rail.ts` `quote` | `rail.test.ts` (10 quoting tests) | — |
-| `confidentiality` parameter | `Missing` | — | — | **Correction to the brief**: the OpenAPI enum is `public / basic / advanced` and the default is **`public`**, not `basic`. Byte must send `basic` explicitly or it gets public behaviour. |
-| `dry: true` supported | `Partial` | `rail.ts` defaults `dry` to true | `rail.test.ts` "is dry by default" | **Broken against the live API.** The OpenAPI states a dry response *omits* `depositAddress`, `timeWhenInactive` and `deadline` — but `quote()` throws `"1Click returned no deposit address"`. Every mock supplies one, so the tests hide it. |
-| `POST /deposit/submit` | `Missing` | — | — | — |
-| Poll `GET /status` through every documented state | `Done` | `rail.ts` `status`, `STATUS_MAP` | `rail.test.ts` "covers every status the API documents" | — |
-| Auto-shield into Ironwood on `SUCCESS` | `Missing` | — | — | Depends on F3 |
-| Recipient is a **fresh** transparent address of the agent's wallet | `Missing` | `recipientTransparentAddress` is a single fixed constructor argument | — | A reused funding address links every funding event to each other |
+| Signed Agent Card | `Done` | `registry/src/card.ts` | `card.test.ts` (27) | — |
+| Served at `/.well-known/byte-agent.json` | `Done` | `WELL_KNOWN_PATH`; legacy path still resolves on a 404 | `card.test.ts` fallback (3) | — |
+| Card fields | `Partial` | `AgentCardBodySchema` | `card.test.ts` | `endpoint` is singular, not a list |
+| A2A agent-card extension | `Missing` | — | — | B6 |
+| Reputation from signed receipts | `Missing` | — | — | B6. Receipts are now issued (A9) |
+| Signed feedback type | `Missing` | — | — | B6 |
+| Merkle-root anchoring in a shielded self-send | `Missing` | — | — | B6 |
+| Documented: anchor private by default | `Missing` | — | — | B6 |
+| Public OP_RETURN-style anchor | `Missing` | — | — | B6. Verify it is standard on Zcash before offering |
 
-### Cash out (shielded ZEC → any asset)
+## F9: NEAR Intents, in and out
+
+### Funding
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| `POST /quote` with ZEC as `originAsset` | `Missing` | — | — | The entire direction is absent |
-| Wallet sends from the shielded pool to `depositAddress` | `Missing` | — | — | — |
-| Verify the deposit address format before sending | `Missing` | — | — | — |
-| `refundTo` = a fresh transparent ZEC address, refunds auto-shielded | `Missing` | — | — | — |
+| `GET /tokens` → ZEC asset | `Done` | `rails/near-intents/src/rail.ts` | `rail.test.ts` | — |
+| `POST /quote` EXACT_OUTPUT | `Done` | `rail.ts` `quote` | `rail.test.ts` (10) | — |
+| `confidentiality: "basic"` sent explicitly | `Missing` | — | — | B1. The API default is `public` |
+| `dry: true` works against the real shape | `Done` | `rail.ts`, `rails/interface` `depositAddress?` | `rail.test.ts` "survives a dry response that omits the deposit address" | Not run live |
+| `POST /deposit/submit` | `Missing` | — | — | B1 |
+| Poll `GET /status` | `Done` | `rail.ts` `status` | `rail.test.ts` all seven statuses | — |
+| Auto-shield on `SUCCESS` | `Missing` | — | — | B1. The auto-shielder exists (F3) |
+| Fresh transparent recipient per quote | `Missing` | — | — | B1. Currently one fixed address |
+
+### Cash out
+
+| Item | Status | Where it lives | Test that proves it | What's missing |
+|------|--------|----------------|---------------------|----------------|
+| Quote with ZEC as `originAsset` | `Missing` | — | — | B1 |
+| Wallet sends from Ironwood to the deposit address | `Missing` | — | — | B1 |
+| Deposit address validated before sending | `Missing` | — | — | B1 |
+| Fresh `refundTo`, refunds auto-shielded | `Missing` | — | — | B1 |
 | Status tracking | `Partial` | `status()` is direction-agnostic | `rail.test.ts` | Reusable as-is |
 
 ### Both directions
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Verify quote/status signatures | `Missing` | — | — | **Confirmed real**: the quote response carries a `signature` field, described as the service's signature confirming deposit-address validity. Nothing verifies it. |
-| `Authorization: Bearer <JWT>`, 0.25% documented without one | `Done` | `rail.ts` `#headers`; `RAILS.md` §Fees | `rail.test.ts` "sends the JWT when one is configured, and omits it otherwise" | — |
-| NEAR Intents fees shown separately from Byte fees | `Partial` | The raw response is carried on the quote | — | No typed breakdown of `refundFee` / `withdrawFee` / `appFees` |
-| Mocked fixtures: all statuses, signature pass/fail, refunds | `Partial` | `rail.test.ts` | 24 tests | Signature pass/fail fixtures Missing |
-| Live test gated behind `BYTE_RAILS_LIVE=1`, starting dry | `Missing` | — | — | — |
-| `SECURITY.md`: transparent leg public; `confidentiality` hides only the Intents-side link | `Partial` | `RAILS.md` and `SECURITY.md` §2.3 cover the transparent leg thoroughly | — | The `confidentiality` caveat is absent because the parameter is |
-| Other rails recorded Implemented/Planned with reasons | `Done` | `RAILS.md` | — | — |
+| Quote and status signature verification | `Missing` | — | — | B1. The quote response carries a `signature`; nothing verifies it |
+| JWT support, 0.25% documented | `Done` | `rail.ts`; `RAILS.md` | `rail.test.ts` | Asuzu has no JWT |
+| NEAR fees shown separately from Byte's | `Partial` | Raw response on the quote | — | No typed breakdown (B1) |
+| Fixtures: statuses, signature pass and fail, refunds | `Partial` | `rail.test.ts` | 26 tests | Signature fixtures missing |
+| Live test gated by `BYTE_RAILS_LIVE=1` | `Missing` | — | — | B1 |
+| `SECURITY.md` on `confidentiality` | `Partial` | Transparent leg covered | — | `confidentiality` caveat absent |
+| Other rails Implemented or Planned with reasons | `Done` | `RAILS.md` | — | — |
 
-## F10 — Framework adapters
+## F10: Framework adapters
 
-Existing adapters: **x402, MCP, A2A/AP2, LangChain**. MPP, AgentKit, ElizaOS, Virtuals GAME
-and OpenClaw **do not exist in this repo** — and, to its credit, nothing claims they do. The
-brief assumes they are already built.
+Existing: **x402, MCP, A2A/AP2, LangChain.** MPP, AgentKit, ElizaOS, Virtuals GAME and
+OpenClaw do not exist in this repo, and nothing claims they do.
 
 | Tool | x402 | MCP | A2A/AP2 | LangChain |
 |------|------|-----|---------|-----------|
-| `byte_pay` | `Done` (`createByteFetch` loop) | `Done` (`createPayingToolCaller`) | `Done` (`flow.ts`) | `Partial` — `byte_fetch_paid`, not a direct pay |
-| `byte_invoice` | `Done` (`byteGate`) | `Done` (`gate.ts`) | `Done` (`method.ts`) | `Missing` |
+| `byte_pay` | `Done` | `Done` | `Done` | `Partial` (`byte_fetch_paid`) |
+| `byte_invoice` | `Done` | `Done` | `Done` | `Missing` |
 | `byte_balance` | `Missing` | `Missing` | `Missing` | `Done` |
 | `byte_receipt` | `Missing` | `Missing` | `Missing` | `Missing` |
 | `byte_shield` / `byte_unshield` | `Missing` | `Missing` | `Missing` | `Missing` |
 | `byte_fund` / `byte_cashout` | `Missing` | `Missing` | `Missing` | `Missing` |
 | `byte_escrow_*` | `Missing` | `Missing` | `Missing` | `Missing` |
 | `byte_agent_card` | `Missing` | `Missing` | `Missing` | `Missing` |
-| Full-loop test through the mock wallet | `Done` | `Done` | `Done` | `Done` |
+| Full loop through the mock wallet | `Done` | `Done` | `Done` | `Done` |
 
-## F11 — NU7 readiness
+Tools are only exposed for features that are `Done`. New adapters need Asuzu's choice.
 
-NU7 is scheduled for **testnet 6 October 2026**, final go/no-go **20 October**, mainnet
-**5 November 2026**: 25-second blocks (ZIP 218), v4 transactions disabled, NSM.
-
-| Item | Status | Where it lives | Test that proves it | What's missing |
-|------|--------|----------------|---------------------|----------------|
-| Never hardcode block time | `Missing` | `core/src/network.ts:57` `BLOCK_TARGET_SECONDS = 75`; `server/src/verifier.ts:52` `RETRY_AFTER_SECONDS = 75`; `scripts/testnet-e2e.ts:74`; `byte-walletd/src/main.rs:20` | — | **Four hardcoded sites.** The clearest contradiction in the repo. |
-| Read block time from consensus params per network and height | `Missing` | — | — | — |
-| Derive confirmation timeouts and `Retry-After` from it | `Missing` | `RETRY_AFTER_SECONDS` is a constant | — | — |
-| Build v5+ transactions only | `Partial` | `chain.rs` passes `proposed_version: None` | — | The resulting version is asserted nowhere. Ironwood needs v6 (ZIP 229, `Draft`); it needs pinning and a test |
-| Test matrix for 75 s vs 25 s spacing | `Missing` | — | — | — |
-| NU7 activation heights | `Missing` | `network.ts` carries NU6.3 heights only | — | The mainnet height is not final until the 20 October go/no-go |
-
-## F12 — Owner / UI JSON API
+## F11: NU7 readiness
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Invoices | `Partial` | `console/src/api.ts` `GET /invoices`, `GET /invoices/:id` | `console.test.ts` | No USD fields (F2) |
-| Receipts | `Done` | `GET /receipts` | `console.test.ts` | — |
+| Never hardcode block time | `Done` | `core/src/network.ts` | `network.test.ts` (13) | — |
+| Read spacing from the chain | `Done` | `/status` `consensusBranchId` → `blockTargetSeconds` | `network.test.ts`; `server.test.ts` (3) | — |
+| Derive `Retry-After` and waits from it | `Done` | `verifier.ts`; `scripts/testnet-e2e.ts` | `server.test.ts` | — |
+| Build v5+ transactions only | `Partial` | `propose_transfer(..., proposed_version: None)` | — | The built version is asserted nowhere (B9). Ironwood needs v6, ZIP 229 is `Draft` |
+| Test matrix for 75 s vs 25 s | `Done` | `network.test.ts` | 13 | — |
+| NU7 activation heights | `Not feasible yet` | Deliberately `undefined` | `network.test.ts` "is not decided by height" | ZIP 259: testnet "TBD (To be set on OCT 5)", mainnet "TBD (To be set on OCT 20)" |
+
+## F12: Owner and UI JSON API
+
+| Item | Status | Where it lives | Test that proves it | What's missing |
+|------|--------|----------------|---------------------|----------------|
+| Invoices with USD fields | `Done` | `console/src/api.ts` | `console.test.ts` | — |
+| Receipts | `Done` | `GET /receipts` | `console.test.ts` | Now populated by A9 |
 | Spend-guard log | `Done` | `GET /guard` | `console.test.ts` | — |
-| Balances: shielded spendable / pending / transparent | `Done` | `GET /balance`, `WalletBalance` | `console.test.ts`, `mock.test.ts` | — |
-| Rail jobs, both directions | `Missing` | — | — | — |
-| Escrow jobs | `Missing` | — | — | — |
-| Agent card | `Missing` | — | — | — |
-| Price-source health | `Missing` | — | — | — |
-| Every route authenticated, constant-time token | `Done` | `api.ts` `authorized` | `console.test.ts` "no route is exempt" | — |
+| Balances (spendable, pending, unusable) | `Done` | `GET /balance` | `console.test.ts` | — |
+| Price-source health | `Done` | `GET /price` | `console.test.ts` (5) | — |
+| Rail jobs, both directions | `Missing` | — | — | B8 |
+| Escrow jobs | `Missing` | — | — | B8 |
+| Agent card | `Missing` | — | — | B8 |
+| Every route authenticated | `Done` | `api.ts` | `console.test.ts` "no route is exempt" | — |
 
 ---
 
-## Contradictions found
+## Contradictions: status
 
-Eight, ranked by how much damage each does.
+The eight from the first audit are closed (Redis claims, hardcoded 75 s, Ironwood-only
+funding in the sidecar, the dry-quote crash, the false signature claim, the card path, the
+`confidentiality` default, the adapter list). Found since:
 
-### 1. Four places claim a Redis store that does not exist
+| Contradiction | Status |
+|---------------|--------|
+| README said the NEAR rail "is not in this release" while the table listed it | Closed (A6) |
+| README, site, DECISIONS and `fee.ts` said "No fee output" after the facilitator fee existed | Closed (A7) |
+| Site claimed a PCZT flow that does not exist | Closed (A3) |
+| Site claimed every listed wallet could pay | Closed (A4) |
+| `price.ts` cited `SPEC.md §5.6`, which did not exist | Closed: SPEC §5.4–5.6 written |
+| Receipts described as a feature; nothing issued one | Closed (A9) |
+| `ByteFacilitator` could not charge the fee it was documented as charging | Closed (A1b) |
+| SPEC diagram shows "200 + resource (+ signed receipt)" but no gate returns one | **Open** (B7) |
 
-| File | Claim |
-|------|-------|
-| `packages/core/src/store.ts:4` | "Byte ships a memory store for tests and development, **and a Redis store** for anything that must survive a restart. **Both** satisfy these interfaces, and **both** are held to the same test suite." |
-| `packages/stores/src/memory.ts:5` | "Anything else **should use the Redis store**" |
-| `docs/ARCHITECTURE.md:153` | "`stores` — **Memory and Redis** implementations of the store interfaces." |
-| `docs/SECURITY.md:146` | "**Use the Redis store** for anything…" |
-
-`README.md:137` and `ROADMAP.md` correctly call it planned. The other four read as shipped.
-This is the worst inconsistency in the repo, because the entire positioning is "nothing is
-supported until implemented and tested".
-
-### 2. Block time is hardcoded in four places
-
-`BLOCK_TARGET_SECONDS = 75`, `RETRY_AFTER_SECONDS = 75`, and two comments. NU7 makes these
-wrong on **6 October** on testnet — a week from now.
-
-### 3. `byte-walletd` does not enforce Ironwood-only funding
-
-`SpendingWallet.send` says implementations **MUST** fund from Ironwood notes only and MUST
-throw rather than fall back. The mock obeys. The real backend calls
-`propose_standard_transfer_to_address`, whose signature has no source-pool parameter. The
-guarantee is documented, tested against the mock, and unenforced where it matters.
-
-### 4. The NEAR rail's default path is broken against the live API
-
-`quote()` defaults to `dry: true`; a dry 1Click response omits `depositAddress`; `quote()`
-throws when it is absent. Every test passes because every mock supplies one. The rail has
-never been run live, which is precisely why this survived.
-
-### 5. `RAILS.md` implies signature verification that does not exist
-
-> "tested against mocked HTTP … covering all seven documented statuses, **signature of the
-> quote request**, and the failure paths"
-
-The test it refers to checks the request *body shape*. No cryptographic signature is
-verified anywhere. That sentence would not survive a judge who greps for it.
-
-### 6. Agent card path
-
-`/.well-known/byte-agent-card` in code, `/.well-known/byte-agent.json` in the brief.
-
-### 7. The brief's `confidentiality` default is wrong
-
-The brief says the default is `basic`. The OpenAPI says **`public`**.
-
-### 8. The brief assumes adapters that do not exist
-
-MPP, AgentKit, ElizaOS, Virtuals GAME and OpenClaw are named as existing. Four exist: x402,
-MCP, A2A/AP2, LangChain. The repo never claimed otherwise, so this is a brief-vs-repo
-mismatch rather than a false claim — but F10's scope is five adapters larger than it reads.
-
----
-
-## Also worth knowing
-
-- **`@defuse-protocol/one-click-sdk-typescript` is at 0.1.26 (22 September 2026).** Byte
-  does not use it; the rail speaks raw HTTP against the OpenAPI document. Worth keeping that
-  way — a payment library should not take a dependency it can replace with `fetch`.
-- **`pczt` 0.9.3 (7 August 2026)** is already in the dependency tree transitively. No Byte
-  code touches it.
-- **1Click also exposes `/v0/account/balances` and `/v0/orders`**, which the brief does not
-  mention. Neither direction needs them.
-
----
-
-## Sources checked for this audit
+## Sources checked
 
 | Fact | Source |
 |------|--------|
-| 1Click endpoints, `/tokens` price fields, `confidentiality` enum, dry-response omissions, quote `signature` | [1Click OpenAPI v0](https://1click.chaindefuser.com/docs/v0/openapi.yaml) |
+| 1Click endpoints, `/tokens` price fields, `confidentiality` enum, dry omissions, quote `signature` | [1Click OpenAPI v0](https://1click.chaindefuser.com/docs/v0/openapi.yaml) |
 | FROST ciphersuites (no Pallas) | [ZcashFoundation/frost Cargo.toml](https://github.com/ZcashFoundation/frost/blob/main/Cargo.toml) |
 | `reddsa` has no FROST module | [docs.rs/reddsa 0.6.1](https://docs.rs/reddsa/latest/reddsa/) |
-| ZIP 311 Payment Disclosures is `Draft`; ZIP 303 `Withdrawn` | [zips.z.cash index](https://zips.z.cash/) |
+| ZIP 311 `Draft`, ZIP 303 `Withdrawn` | [zips.z.cash](https://zips.z.cash/) |
 | Unwitnessed Ironwood PCZT spends | [librustzcash#2524](https://github.com/zcash/librustzcash/issues/2524) |
-| `propose_standard_transfer_to_address` signature | [docs.rs zcash_client_backend 0.24.0](https://docs.rs/zcash_client_backend/0.24.0/zcash_client_backend/data_api/wallet/fn.propose_standard_transfer_to_address.html) |
-| `pczt` versions | [crates.io/crates/pczt](https://crates.io/crates/pczt) |
-| 1Click TS SDK version | [npm registry](https://www.npmjs.com/package/@defuse-protocol/one-click-sdk-typescript) |
-| NU7 dates and ZIP 218 | [crypto.news, September 2026](https://crypto.news/zcash-targets-nov-5-for-nu7-mainnet-upgrade/) |
+| NU7 branch ID `0x77190AD9`, heights TBD | [ZIP 259](https://zips.z.cash/zip-0259) |
+| `zcash_protocol` 0.10.6 still has a NU7 placeholder | [librustzcash#3047](https://github.com/zcash/librustzcash/pull/3047) |
+| ZIP 321 indexed form grammar | [ZIP 321](https://zips.z.cash/zip-0321) |
+| `SpendPolicy`, `propose_transfer` | `zcash_client_backend` 0.24.0 source |
+| Wallet Ironwood status | [Zcash forum wallet list](https://forum.zcashcommunity.com/t/ironwood-is-here-updated-wallets-libraries-aug-1/56557) and [npm](https://www.npmjs.com/package/@chainsafe/webzjs-zcash-snap) |

@@ -149,6 +149,74 @@ carrying exactly the memo from §6.
 The payer retries the original request with a payload carrying
 `{ scheme, network, invoiceId, txid }`, serialized as JSON and encoded base64.
 
+### 5.4 Invoices priced in USD
+
+A payee MAY denominate an invoice in USD and settle it in ZEC. There is no shielded
+stablecoin on Zcash and ZSAs are not on mainnet, so **settlement is always in ZEC**.
+
+The payee converts once, at issue time, and locks the result into the invoice:
+
+```
+price: { priceUsd, zecUsd, priceSource, quotedAt }
+```
+
+- `priceUsd` is a decimal string with at most two places. Never a float.
+- The conversion MUST round **up**. Rounding down would leave the payee short on every
+  invoice, always in the payer's favour.
+- A payee MUST refuse to issue if its price is stale (`maxPriceAgeSec`) or if two configured
+  sources disagree by more than `maxDeviationBps`. It MUST NOT average them or pick the
+  cheaper: two independent sources disagreeing means something is wrong, and quoting from
+  the middle of a contradiction is worse than not quoting.
+- The `price` block is informational to a verifier. **A payment is judged against `amount`
+  alone and is never re-priced.** Re-pricing at verification would let the market move
+  between a payer committing to an amount and the payee deciding it was insufficient, for a
+  transaction that can no longer be changed.
+
+The consequence is stated, not hidden: **the payer and the payee both carry price risk
+between the moment the quote is locked and the moment the ZEC is cashed out.** Byte does not
+hedge it. A short invoice lifetime is the lever.
+
+The `asset` field is `ZEC` and only `ZEC`. A future ZSA asset identifier is **Planned** and
+depends on ZSAs reaching mainnet; nothing accepts one today.
+
+### 5.5 Outputs, and the facilitator fee
+
+Byte's protocol fee is **zero**: no output pays Byte and there is no treasury address. The
+Zcash network fee still applies and goes to miners.
+
+A facilitator MAY charge its own fee. If it does, the invoice carries a second output:
+
+```
+fee: { amount, payTo, bps }
+```
+
+encoded in the same ZIP-321 request using the indexed multi-payment form (`address.1`,
+`amount.1`; index 0 carries no suffix and `.0` is invalid). Then:
+
+- The payer MUST pay every output in **one transaction**, and its spend guard MUST authorize
+  the **total**, fee included.
+- The fee leg carries no memo. It binds to no invoice, and a memo there would be a second
+  place an invoice identifier could reach a third party.
+- The facilitator MUST verify the fee output arrived, in the same transaction, before
+  approving. A payment that settled the payee but skipped the fee is refused as
+  `underpaid` and MUST NOT consume the invoice.
+- The fee MUST be rounded up, and an amount of zero means no second output.
+
+**The fee is enforced by the facilitator's verification, not by the chain.** Nothing on-chain
+requires the second output to exist. A payer that pays the payee directly and asks the payee
+to verify skips the fee. That is a consequence of Zcash having no contracts, not a gap.
+
+### 5.6 One transaction
+
+Value and memo travel in a single shielded transaction. There is therefore no window in
+which value has moved but the payee cannot tell which invoice it settles, or the reverse;
+a design that carries the identifying data in a second transaction has that window, and a
+failure between the two strands the payment.
+
+No "silent failure" mechanism is needed to hide an insufficient balance. A Zcash transaction
+that cannot be funded cannot be built, so nothing is broadcast and nothing about the balance
+appears on-chain. The payer learns it locally, as `insufficient_funds`.
+
 ---
 
 ## 6. Memo

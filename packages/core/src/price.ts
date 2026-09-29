@@ -25,7 +25,7 @@
  * out**. Byte does not hedge that and does not pretend to. Short invoice TTLs are the
  * lever: a five-minute invoice carries five minutes of risk.
  *
- * See docs/SPEC.md §5.6.
+ * See docs/SPEC.md §5.4.
  */
 
 import { ByteProtocolError } from "./errors.js";

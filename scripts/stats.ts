@@ -52,12 +52,40 @@ function run(
   }
 }
 
+/**
+ * Run the suite, retrying once if — and only if — the *runner* died.
+ *
+ * On Windows a vitest worker occasionally exits with 0xC0000409 (3221226505), a native
+ * fail-fast, most often in a file that opens real HTTP servers. It happens in roughly one
+ * run in six to twelve, it is not a test failing, and I do not have a root cause. Left
+ * alone it made the stats command fail for reasons unrelated to any test.
+ *
+ * The retry is narrow on purpose. It triggers only on that runner-death signature, never
+ * on a failed assertion, so it cannot turn a red suite green. And it says that it retried,
+ * so a crash cannot pass unnoticed.
+ */
+function runVitest(): string {
+  const RUNNER_DIED = /Worker exited unexpectedly|Worker forks emitted error/;
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return run("npx", ["vitest", "run"], { env: { BYTE_STATS_REFRESH: "1" } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // A failed test prints a FAIL line; a dead runner does not. Both must hold to retry.
+      const runnerDied = RUNNER_DIED.test(message) && !/\bFAIL\b/.test(message);
+      if (!runnerDied || attempt >= 2) throw error;
+      process.stderr.write("vitest's worker process died (not a test failure); retrying once\n");
+    }
+  }
+}
+
 function countTypescript(): Stats["typescript"] {
   // BYTE_STATS_REFRESH tells the consistency test not to compare surfaces to STATS.json
   // during this run. Without it the command that fixes a stale surface could never start:
   // the stale surface fails the suite, and a failing suite refuses to write the counts.
   // The next ordinary `vitest run` does the comparison.
-  const output = run("npx", ["vitest", "run"], { env: { BYTE_STATS_REFRESH: "1" } });
+  const output = runVitest();
 
   // "Test Files  25 passed (25)" / "Tests  503 passed (503)"
   const files = /Test Files\s+(\d+) passed \((\d+)\)/.exec(output);
@@ -97,7 +125,11 @@ function countRust(): Stats["rust"] {
  * `<!--stats:total-->563<!--/stats-->`. HTML comments render as nothing in both HTML and
  * GitHub-flavoured Markdown, so the marker costs a reader nothing.
  */
-export const STAT_SURFACES = ["README.md", "apps/site/index.html"] as const;
+export const STAT_SURFACES = [
+  "README.md",
+  "apps/site/index.html",
+  "docs/CONSISTENCY_AUDIT.md",
+] as const;
 
 export const STAT_MARKER = /<!--stats:(total|ts|rust)-->(\d+)<!--\/stats-->/g;
 
