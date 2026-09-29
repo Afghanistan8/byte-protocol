@@ -1,0 +1,32 @@
+{
+  "name": "@byte-protocol/adapter-a2a-ap2",
+  "version": "0.1.0",
+  "description": "Byte as an AP2 payment method, carried over A2A",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@byte-protocol/client": "workspace:*",
+    "@byte-protocol/core": "workspace:*",
+    "@byte-protocol/server": "workspace:*",
+    "@byte-protocol/wallet": "workspace:*"
+  },
+  "devDependencies": {
+    "@byte-protocol/stores": "workspace:*"
+  }
+}

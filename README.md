@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**318 tests pass**: 262 TypeScript, 56 Rust.
+**365 tests pass**: 309 TypeScript, 56 Rust.
 
 ---
 
@@ -126,11 +126,14 @@ Implemented and tested:
 | `@byte-protocol/facilitator` | View-only verification as a service |
 | `@byte-protocol/registry` | Agent Cards: signing, verification, resolution |
 | `@byte-protocol/adapter-x402` | Byte as an x402 v2 scheme |
+| `@byte-protocol/adapter-mcp` | Gate an MCP tool behind an invoice; settle one from the client |
+| `@byte-protocol/adapter-a2a-ap2` | Byte as an AP2 payment method, carried over A2A |
+| `@byte-protocol/adapter-langchain` | LangChain tools: fetch paid resources, check balance, review spending |
 | `crates/byte-walletd` | The Rust sidecar on librustzcash: addresses, sync, send, verify |
 
-**Planned, and not claimed to work:** MCP, A2A/AP2 and LangChain adapters; a Redis store; the
-NEAR Intents funding rail; the owner-only JSON API and its console. Nothing above is listed as
-supported without code and a passing test behind it.
+**Planned, and not claimed to work:** a Redis store; the NEAR Intents funding rail; the
+owner-only JSON API and its console. Nothing above is listed as supported without code and a
+passing test behind it.
 
 ---
 

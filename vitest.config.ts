@@ -20,6 +20,8 @@ export default defineConfig({
       "@byte-protocol/facilitator": src("facilitator"),
       "@byte-protocol/adapter-x402": fileURLToPath(new URL("./packages/adapters/x402/src/index.ts", import.meta.url)),
       "@byte-protocol/adapter-mcp": fileURLToPath(new URL("./packages/adapters/mcp/src/index.ts", import.meta.url)),
+      "@byte-protocol/adapter-a2a-ap2": fileURLToPath(new URL("./packages/adapters/a2a-ap2/src/index.ts", import.meta.url)),
+      "@byte-protocol/adapter-langchain": fileURLToPath(new URL("./packages/adapters/langchain/src/index.ts", import.meta.url)),
     },
   },
   test: {
