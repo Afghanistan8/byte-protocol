@@ -18,6 +18,7 @@ export default defineConfig({
       "@byte-protocol/client": src("client"),
       "@byte-protocol/registry": src("registry"),
       "@byte-protocol/facilitator": src("facilitator"),
+      "@byte-protocol/adapter-x402": fileURLToPath(new URL("./packages/adapters/x402/src/index.ts", import.meta.url)),
     },
   },
   test: {

@@ -1,4 +1,4 @@
 {
   "files": [],
-  "references": [{ "path": "./packages/core" }, { "path": "./packages/wallet" }, { "path": "./packages/stores" }, { "path": "./packages/server" }, { "path": "./packages/client" }, { "path": "./packages/registry" }, { "path": "./packages/facilitator" }]
+  "references": [{ "path": "./packages/core" }, { "path": "./packages/wallet" }, { "path": "./packages/stores" }, { "path": "./packages/server" }, { "path": "./packages/client" }, { "path": "./packages/registry" }, { "path": "./packages/facilitator" }, { "path": "./packages/adapters/x402" }]
 }
