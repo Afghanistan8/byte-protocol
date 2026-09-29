@@ -397,6 +397,26 @@ fn parse_txid(hex_txid: &str) -> Result<zcash_protocol::TxId, WalletStateError> 
     Ok(zcash_protocol::TxId::from_bytes(array))
 }
 
+/// Decode a transparent address, refusing anything else by name.
+///
+/// A shielded or unified address passed here is a caller mistake worth naming: shielding
+/// *from* a shielded address is not a thing, and silently ignoring it would make the sweep
+/// report success having done nothing.
+fn decode_transparent(
+    params: &consensus::Network,
+    encoded: &str,
+) -> Result<transparent::address::TransparentAddress, ChainError> {
+    use zcash_keys::address::Address;
+
+    match Address::decode(params, encoded) {
+        Some(Address::Transparent(address)) => Ok(address),
+        Some(_) => Err(ChainError::Send(format!(
+            "{encoded} is not a transparent address; shielding sweeps transparent UTXOs and              a shielded or unified address has none"
+        ))),
+        None => Err(ChainError::Send(format!("could not parse address {encoded}"))),
+    }
+}
+
 /// Map a pool to the name the TypeScript side uses.
 fn pool_name(pool: zcash_protocol::PoolType) -> &'static str {
     use zcash_protocol::PoolType;
@@ -623,6 +643,37 @@ pub struct SendOutcome {
     pub fee_zat: String,
 }
 
+/// One shielding transaction.
+///
+/// Amounts are serialized as strings, like every other amount crossing to TypeScript: the
+/// maximum supply fits in an f64 today, and a JSON number is one careless multiplication
+/// away from not fitting.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShieldOutcome {
+    pub txid: String,
+    /// Value that arrived in Ironwood, net of the fee.
+    #[serde(serialize_with = "serialize_u64_as_string")]
+    pub amount_zat: u64,
+    /// The ZIP 317 fee, read from the built proposal rather than assumed.
+    #[serde(serialize_with = "serialize_u64_as_string")]
+    pub fee_zat: u64,
+}
+
+fn serialize_u64_as_string<S: serde::Serializer>(
+    value: &u64,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&value.to_string())
+}
+
+/// Default floor for shielding a transparent UTXO.
+///
+/// The ZIP 317 marginal fee. A UTXO worth less than the fee to move it costs money to
+/// shield, so sweeping it is a wallet losing value in the name of tidiness. A caller who
+/// wants the dust anyway can pass a lower minimum.
+pub const DEFAULT_SHIELD_THRESHOLD_ZAT: u64 = 5_000;
+
 /// Locate the Sapling proving parameters, downloading them once if absent.
 ///
 /// `create_proposed_transactions` requires a Sapling `SpendProver` and `OutputProver` in
@@ -650,6 +701,233 @@ pub fn ensure_sapling_prover() -> Result<zcash_proofs::prover::LocalTxProver, Ch
 }
 
 impl LightwalletdChain {
+    /// Send value out of Ironwood to a transparent address.
+    ///
+    /// **This publishes the amount.** ZIP 318 is explicit that the net amount crossing
+    /// between pools is revealed on-chain, and unshielding is that crossing, deliberately.
+    ///
+    /// It reuses the ordinary transfer path, which means `assert_ironwood_funded` still
+    /// runs: the *source* must be Ironwood even though the destination is public. Funding
+    /// an unshield from a transparent UTXO would be a transparent-to-transparent transfer
+    /// wearing the wrong name.
+    pub async fn unshield(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        to_transparent: &str,
+        amount_zat: u64,
+    ) -> Result<SendOutcome, ChainError> {
+        let params = self.network.params();
+
+        // Decoded here, before anything is built, so the refusal names the real reason
+        // rather than surfacing as an opaque builder error.
+        decode_transparent(&params, to_transparent)?;
+
+        // No memo: a transparent output cannot carry one. Passing one here would be
+        // silently dropped, and a caller would think their memo had gone out.
+        self.send_to(usk, to_transparent, amount_zat, None).await
+    }
+
+    /// Serialize a built transaction and hand it to the light server.
+    ///
+    /// Until this succeeds nothing has left the machine, so a failure here means the
+    /// payment did not happen — not that it happened and was lost. Shared by every path
+    /// that broadcasts, so there is one place where that property is true.
+    async fn broadcast(
+        &self,
+        db: &mut ByteWalletDb,
+        txid: zcash_protocol::TxId,
+    ) -> Result<(), ChainError> {
+        use zcash_client_backend::data_api::WalletRead;
+
+        let raw = db
+            .get_transaction(txid)
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .ok_or_else(|| {
+                ChainError::Send("built transaction is missing from the wallet".into())
+            })?;
+
+        let mut bytes = Vec::new();
+        raw.write(&mut bytes)
+            .map_err(|e| ChainError::Send(format!("serializing transaction: {e}")))?;
+
+        let mut client = connect(&self.endpoint).await?;
+        let response = client
+            .send_transaction(zcash_client_backend::proto::service::RawTransaction {
+                data: bytes,
+                height: 0,
+            })
+            .await
+            .map_err(|e| ChainError::Lightwalletd(e.to_string()))?
+            .into_inner();
+
+        if response.error_code != 0 {
+            return Err(ChainError::Send(format!(
+                "light server rejected the transaction: code {} {}",
+                response.error_code, response.error_message
+            )));
+        }
+        Ok(())
+    }
+
+    /// Sweep transparent value into Ironwood.
+    ///
+    /// One transaction per call. The *policy* — how many transactions, how long to wait
+    /// between them, how much to take each time — lives in the TypeScript client, where a
+    /// caller can see and configure it. The sidecar has no timer and no schedule, which
+    /// means it has no schedule to get wrong.
+    ///
+    /// ## Why there is no "shield a fraction" parameter
+    ///
+    /// `propose_shielding` selects inputs by *address*: you hand it transparent addresses
+    /// and it sweeps what they hold above a threshold. There is no UTXO-level knob, and
+    /// there is no honest way to synthesise one — taking some inputs back out of a built
+    /// proposal invalidates the fee it was built with.
+    ///
+    /// So splitting a sweep means calling this several times with different addresses, and
+    /// that is what the client does. A wallet with one transparent address cannot split,
+    /// and `WalletdWallet.shield` says so rather than accepting `splitInto` and quietly
+    /// doing one transaction.
+    ///
+    /// Returns `None` when there is nothing above the threshold worth moving. That is the
+    /// ordinary end of a sweep, not a failure.
+    pub async fn shield(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        from: Option<&[String]>,
+        minimum_zat: Option<u64>,
+    ) -> Result<Option<ShieldOutcome>, ChainError> {
+        use zcash_client_backend::data_api::wallet::input_selection::GreedyInputSelector;
+        use zcash_client_backend::data_api::wallet::{
+            create_proposed_transactions, propose_shielding, SpendingKeys,
+        };
+        use zcash_client_backend::data_api::{CoinbaseFilter, WalletRead};
+        use zcash_client_backend::fees::standard::SingleOutputChangeStrategy;
+        use zcash_client_backend::fees::{DustOutputPolicy, StandardFeeRule};
+        use zcash_client_backend::wallet::OvkPolicy;
+        use ::transparent::address::TransparentAddress;
+
+        let params = self.network.params();
+        let mut db = self.open_db()?;
+
+        let account_id = *db
+            .get_account_ids()
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .first()
+            .ok_or_else(|| ChainError::Db("no account registered".into()))?;
+
+        // Which transparent addresses to sweep. Every one the account knows about, unless
+        // the caller named some.
+        let owned = db
+            .get_transparent_receivers(account_id, true, true)
+            .map_err(|e| ChainError::Db(e.to_string()))?;
+
+        let addresses: Vec<TransparentAddress> = match from {
+            Some(requested) => {
+                let mut selected = Vec::with_capacity(requested.len());
+                for encoded in requested {
+                    let decoded = decode_transparent(&params, encoded)?;
+                    // Refuse an address the wallet does not control rather than sweeping
+                    // nothing and reporting success: "I shielded zero" and "that is not
+                    // your address" are different answers.
+                    if !owned.contains_key(&decoded) {
+                        return Err(ChainError::Send(format!(
+                            "{encoded} is not a transparent address this wallet controls"
+                        )));
+                    }
+                    selected.push(decoded);
+                }
+                selected
+            }
+            None => owned.keys().copied().collect(),
+        };
+
+        if addresses.is_empty() {
+            return Ok(None);
+        }
+
+        // The shielding threshold. A UTXO worth less than the fee to move it costs money
+        // to shield, so the default is the ZIP 317 marginal fee rather than zero.
+        let threshold = Zatoshis::from_u64(minimum_zat.unwrap_or(DEFAULT_SHIELD_THRESHOLD_ZAT))
+            .map_err(|e| ChainError::Send(format!("invalid minimum: {e:?}")))?;
+
+        let input_selector = GreedyInputSelector::new();
+        // Change stays in Ironwood, for the same reason it does on a payment: change
+        // landing in another pool would be a pool-crossing transfer, and ZIP 318 makes the
+        // net amount crossing public.
+        let change_strategy = SingleOutputChangeStrategy::new(
+            StandardFeeRule::Zip317,
+            None,
+            ShieldedPool::Ironwood,
+            DustOutputPolicy::default(),
+        );
+
+        let proposal = match propose_shielding::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
+            &mut db,
+            &params,
+            &input_selector,
+            &change_strategy,
+            threshold,
+            &addresses,
+            account_id,
+            ConfirmationsPolicy::MIN,
+            CoinbaseFilter::AllTransparentOutputs,
+            None,
+        ) {
+            Ok(proposal) => proposal,
+            Err(error) => {
+                // "Nothing to shield" is the common case and must not look like a failure.
+                let message = error.to_string();
+                if message.contains("Insufficient") || message.contains("insufficient") {
+                    return Ok(None);
+                }
+                return Err(ChainError::Send(format!("building shielding proposal: {message}")));
+            }
+        };
+
+        let step = proposal.steps().last();
+        let fee_zat = u64::from(step.balance().fee_required());
+        // The value being shielded, taken from the proposal rather than assumed: this is
+        // the ZIP 317 fee the transaction will actually pay, not a conventional guess.
+        let total_in: u64 = step
+            .transparent_inputs()
+            .iter()
+            .map(|utxo| u64::from(utxo.value()))
+            .sum();
+        let amount_zat = total_in.saturating_sub(fee_zat);
+
+        let prover = ensure_sapling_prover()?;
+        let spending_keys = SpendingKeys::from_unified_spending_key(usk.clone());
+
+        let txids = create_proposed_transactions::<
+            _,
+            _,
+            std::convert::Infallible,
+            _,
+            std::convert::Infallible,
+            _,
+        >(
+            &mut db,
+            &params,
+            &prover,
+            &prover,
+            &spending_keys,
+            OvkPolicy::Sender,
+            &proposal,
+            None,
+        )
+        .map_err(|e| ChainError::Send(format!("building shielding transaction: {e}")))?;
+
+        let txid = *txids.first();
+        self.broadcast(&mut db, txid).await?;
+
+        tracing::info!(txid = %txid, amount_zat, fee_zat, "shielded");
+        Ok(Some(ShieldOutcome {
+            txid: txid.to_string(),
+            amount_zat,
+            fee_zat,
+        }))
+    }
+
     /// Build, prove and broadcast a shielded Ironwood payment carrying `memo`.
     ///
     /// Change is directed to Ironwood via `fallback_change_pool`. That is not a detail:
@@ -661,6 +939,21 @@ impl LightwalletdChain {
         to: &str,
         amount_zat: u64,
         memo: &str,
+    ) -> Result<SendOutcome, ChainError> {
+        self.send_to(usk, to, amount_zat, Some(memo)).await
+    }
+
+    /// The shared transfer path.
+    ///
+    /// `memo` is optional only because a transparent output cannot carry one. Every Byte
+    /// *payment* has a memo — it is what binds a note to an invoice — so the public
+    /// `send` above requires it, and only `unshield` passes `None`.
+    async fn send_to(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        to: &str,
+        amount_zat: u64,
+        memo: Option<&str>,
     ) -> Result<SendOutcome, ChainError> {
         use zcash_client_backend::data_api::wallet::{
             create_proposed_transactions, propose_standard_transfer_to_address, SpendingKeys,
@@ -685,8 +978,13 @@ impl LightwalletdChain {
         let amount = Zatoshis::from_u64(amount_zat)
             .map_err(|e| ChainError::Send(format!("invalid amount: {e:?}")))?;
 
-        let memo_bytes = MemoBytes::from_bytes(memo.as_bytes())
-            .map_err(|e| ChainError::Send(format!("invalid memo: {e:?}")))?;
+        let memo_bytes = match memo {
+            Some(text) => Some(
+                MemoBytes::from_bytes(text.as_bytes())
+                    .map_err(|e| ChainError::Send(format!("invalid memo: {e:?}")))?,
+            ),
+            None => None,
+        };
 
         // The commitment-tree error type cannot be inferred from the arguments, so it is
         // named explicitly: it is what zcash_client_sqlite's WalletCommitmentTrees uses.
@@ -702,7 +1000,7 @@ impl LightwalletdChain {
             ConfirmationsPolicy::MIN,
             &recipient,
             amount,
-            Some(memo_bytes),
+            memo_bytes,
             None,
             // Change stays in Ironwood. See the note on this method.
             ShieldedPool::Ironwood,
@@ -754,33 +1052,7 @@ impl LightwalletdChain {
 
         // Broadcast. Until this succeeds nothing has left the machine, so a failure here
         // means the payment did not happen — not that it happened and was lost.
-        let raw = db
-            .get_transaction(txid)
-            .map_err(|e| ChainError::Db(e.to_string()))?
-            .ok_or_else(|| {
-                ChainError::Send("built transaction is missing from the wallet".into())
-            })?;
-
-        let mut bytes = Vec::new();
-        raw.write(&mut bytes)
-            .map_err(|e| ChainError::Send(format!("serializing transaction: {e}")))?;
-
-        let mut client = connect(&self.endpoint).await?;
-        let response = client
-            .send_transaction(zcash_client_backend::proto::service::RawTransaction {
-                data: bytes,
-                height: 0,
-            })
-            .await
-            .map_err(|e| ChainError::Lightwalletd(e.to_string()))?
-            .into_inner();
-
-        if response.error_code != 0 {
-            return Err(ChainError::Send(format!(
-                "light server rejected the transaction: code {} {}",
-                response.error_code, response.error_message
-            )));
-        }
+        self.broadcast(&mut db, txid).await?;
 
         tracing::info!(txid = %txid, fee_zat, "broadcast");
 

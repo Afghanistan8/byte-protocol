@@ -162,6 +162,49 @@ Change is directed to Ironwood. The first call downloads the Sapling proving par
 (~50 MB, once) — required by the transaction builder's signature even though Byte builds no
 Sapling output.
 
+The built proposal is inspected before it is proved, signed or broadcast: if its inputs
+include a transparent UTXO or a Sapling or Orchard note, the request is refused with
+`wrong_pool_source` and nothing is sent. `propose_standard_transfer_to_address` takes no
+parameter restricting source pools, so without that check the input selector is free to top
+a payment up from outside Ironwood and publish the amount crossing the turnstile.
+
+### `POST /shield`
+
+Sweep transparent value into Ironwood. One transaction per call.
+
+```json
+{ "fromTransparent": ["t1…"], "minimumZat": "5000" }
+```
+→ `{ "txid": "aa1ded9…683690", "amountZat": "4990000", "feeZat": "10000" }`
+
+Both fields are optional. Omitting `fromTransparent` sweeps every transparent address the
+wallet controls; `minimumZat` defaults to the ZIP 317 marginal fee, because a UTXO worth
+less than the fee to move it costs money to shield.
+
+**`{}` — an empty object, with no `txid` — means there was nothing above the threshold
+worth moving.** That is the ordinary end of a sweep, not an error.
+
+The delay-and-split policy is **not** here. It lives in `WalletdWallet.shield`, where a
+caller can see and configure it, and the daemon holds no timer. Splitting is several calls
+over different addresses: `propose_shielding` selects inputs by address and offers no
+UTXO-level knob, so a wallet with one transparent address cannot split and the client says
+so rather than quietly producing one transaction.
+
+### `POST /unshield`
+
+Send value out of Ironwood to a transparent address. **This publishes the amount** — ZIP 318
+makes the net amount crossing between pools public, and that is what unshielding is.
+
+```json
+{ "toTransparent": "t1…", "amountZat": "5000000" }
+```
+→ `{ "txid": "bb1ded9…683691", "feeZat": "10000" }`
+
+The destination is decoded before anything is built, so a shielded or unified address is
+refused by name rather than surfacing as an opaque builder error. The *source* must still be
+Ironwood: `wrong_pool_source` applies here too, because funding an unshield from a
+transparent UTXO would be a transparent-to-transparent transfer wearing the wrong name.
+
 ### Error codes
 
 | `code` | Status | Meaning |
@@ -172,6 +215,7 @@ Sapling output.
 | `no_chain` | 503 | Not connected to a chain |
 | `chain_unavailable` | 502 | The light server could not be reached |
 | `send_failed` | 502 | The transaction could not be built or broadcast |
+| `wrong_pool_source` | 409 | Refused: this would have been funded from outside Ironwood. Not a failure — the wallet holds value and Byte declined to spend the wrong kind |
 | `bad_memo`, `bad_secret`, `bad_amount` | 400 | Malformed request |
 
 ---

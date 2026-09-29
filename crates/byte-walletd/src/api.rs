@@ -182,6 +182,28 @@ pub struct SendRequest {
     pub memo: String,
 }
 
+/// Sweep transparent value into Ironwood.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShieldRequest {
+    /// Transparent addresses to sweep. Every one the wallet controls, when omitted.
+    #[serde(default)]
+    pub from_transparent: Option<Vec<String>>,
+    /// Leave UTXOs below this alone. Defaults to the ZIP 317 marginal fee.
+    #[serde(default)]
+    pub minimum_zat: Option<String>,
+}
+
+/// Send value out of Ironwood to a transparent address. Publishes the amount.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnshieldRequest {
+    /// A transparent address, `t1` or `t3`.
+    pub to_transparent: String,
+    /// Zatoshis, as a base-10 integer string.
+    pub amount_zat: String,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotesQuery {
@@ -202,6 +224,8 @@ pub fn router(state: AppState) -> Router {
         .route("/notes", get(notes))
         .route("/balance", get(balance))
         .route("/send", post(send))
+        .route("/shield", post(shield))
+        .route("/unshield", post(unshield))
         // 64 KiB is far above any legitimate request here and well below anything that
         // would let an unauthenticated caller exhaust memory.
         .layer(tower_http::limit::RequestBodyLimitLayer::new(64 * 1024))
@@ -321,6 +345,52 @@ async fn balance(
 ///
 /// This is the only route that moves value. A view-only deployment rejects it with
 /// `view_only` before any transaction is built.
+/// Sweep transparent value into Ironwood.
+///
+/// Answers `{}` — no txid — when there was nothing above the threshold worth moving. That
+/// is the ordinary end of a sweep, and reporting it as an error would make every completed
+/// sweep look like a failure.
+async fn shield(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<ShieldRequest>,
+) -> ApiResult<Option<crate::chain::ShieldOutcome>> {
+    authorize(&headers, &state.api_token)?;
+
+    let minimum_zat = match body.minimum_zat.as_deref() {
+        Some(raw) => Some(parse_zat(raw, "minimumZat")?),
+        None => None,
+    };
+
+    Ok(Json(
+        state
+            .wallet
+            .shield(body.from_transparent.as_deref(), minimum_zat)
+            .await?,
+    ))
+}
+
+/// Send value out of Ironwood to a transparent address.
+///
+/// The amount becomes public. That is what unshielding is, and there is no version of it
+/// that does not leak — see docs/SECURITY.md.
+async fn unshield(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<UnshieldRequest>,
+) -> ApiResult<crate::chain::SendOutcome> {
+    authorize(&headers, &state.api_token)?;
+
+    let amount_zat = parse_zat(&body.amount_zat, "amountZat")?;
+
+    Ok(Json(
+        state
+            .wallet
+            .unshield(&body.to_transparent, amount_zat)
+            .await?,
+    ))
+}
+
 async fn send(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -328,19 +398,28 @@ async fn send(
 ) -> ApiResult<crate::chain::SendOutcome> {
     authorize(&headers, &state.api_token)?;
 
-    let amount_zat: u64 = body.amount_zat.parse().map_err(|_| {
-        ApiFailure(
-            StatusCode::BAD_REQUEST,
-            ApiError::new(
-                "bad_amount",
-                "amountZat must be a base-10 integer string of zatoshis",
-            ),
-        )
-    })?;
+    let amount_zat = parse_zat(&body.amount_zat, "amountZat")?;
 
     Ok(Json(
         state.wallet.send(&body.to, amount_zat, &body.memo).await?,
     ))
+}
+
+/// Parse a zatoshi amount, naming the field that was wrong.
+///
+/// Amounts cross this boundary as strings, never as JSON numbers, for the reason set out
+/// in `packages/core/src/amount.ts`: the maximum supply fits in an f64 today and is one
+/// multiplication away from not fitting.
+fn parse_zat(raw: &str, field: &str) -> Result<u64, ApiFailure> {
+    raw.parse().map_err(|_| {
+        ApiFailure(
+            StatusCode::BAD_REQUEST,
+            ApiError::new(
+                "bad_amount",
+                format!("{field} must be a base-10 integer string of zatoshis"),
+            ),
+        )
+    })
 }
 
 fn decode_secret(hex_secret: &str) -> Result<Vec<u8>, ApiFailure> {

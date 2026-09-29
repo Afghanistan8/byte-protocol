@@ -346,26 +346,51 @@ describe("shield", () => {
     expect(result.shieldedZat).toBe("4990000");
     expect(result.feeZat).toBe("10000");
 
+    // No addresses named means "every one you control", so the body carries none.
     const call = fake.requests.find((r) => r.path === "/shield");
-    expect((call?.body as { fraction: number }).fraction).toBe(1);
+    expect((call?.body as { fromTransparent?: string[] }).fromTransparent).toBeUndefined();
   });
 
-  it("asks for a shrinking fraction so a split does not sweep everything first", async () => {
-    // Without this the first transaction takes the lot and the remaining ones find
-    // nothing, which is a split in name only.
+  it("splits across the transparent addresses it was given", async () => {
+    // byte-walletd selects inputs by address, so a split is several calls over different
+    // addresses. Round-robin, not contiguous slices: addresses arrive in deposit order,
+    // and contiguous slices would put consecutive deposits in the same transaction.
     const { wallet, fake } = await connect({ "POST /shield": SHIELD_OK });
-    await wallet.shield({ splitInto: 3 });
+    const addresses = ["t1a", "t1b", "t1c", "t1d", "t1e"];
+    await wallet.shield({ splitInto: 2, fromTransparent: addresses });
 
-    const fractions = fake.requests
+    const groups = fake.requests
       .filter((r) => r.path === "/shield")
-      .map((r) => (r.body as { fraction: number }).fraction);
+      .map((r) => (r.body as { fromTransparent: string[] }).fromTransparent);
 
-    expect(fractions).toEqual([1 / 3, 1 / 2, 1]);
+    expect(groups).toEqual([
+      ["t1a", "t1c", "t1e"],
+      ["t1b", "t1d"],
+    ]);
+  });
+
+  it("refuses a split it cannot actually perform", async () => {
+    // A caller who asked for correlation resistance and silently got one transaction is
+    // worse off than one who got an error: they think they have a property they do not.
+    const { wallet, fake } = await connect({ "POST /shield": SHIELD_OK });
+
+    await expect(wallet.shield({ splitInto: 3 })).rejects.toThrow(
+      /needs at least 3 transparent addresses/,
+    );
+    await expect(
+      wallet.shield({ splitInto: 3, fromTransparent: ["t1a", "t1b"] }),
+    ).rejects.toThrow(/and 2 were given/);
+
+    expect(fake.requests.filter((r) => r.path === "/shield")).toHaveLength(0);
   });
 
   it("waits a drawn delay between transactions", async () => {
     const { wallet, slept } = await connect({ "POST /shield": SHIELD_OK }, { random: () => 0.5 });
-    const result = await wallet.shield({ splitInto: 2, delayRangeSec: [10, 20] });
+    const result = await wallet.shield({
+      splitInto: 2,
+      fromTransparent: ["t1a", "t1b"],
+      delayRangeSec: [10, 20],
+    });
 
     expect(result.transactions.map((t) => t.delayedSec)).toEqual([15, 15]);
     expect(slept).toEqual([15_000, 15_000]);
@@ -375,7 +400,10 @@ describe("shield", () => {
     // No txid means no UTXO above the minimum. That is the normal end of a sweep, not a
     // failure, and treating it as one would make every completed sweep look broken.
     const { wallet } = await connect({ "POST /shield": { body: {} } });
-    const result = await wallet.shield({ splitInto: 3 });
+    const result = await wallet.shield({
+      splitInto: 3,
+      fromTransparent: ["t1a", "t1b", "t1c"],
+    });
 
     expect(result.transactions).toHaveLength(0);
     expect(result.shieldedZat).toBe("0");
@@ -408,9 +436,9 @@ describe("shield", () => {
       },
     });
 
-    await expect(wallet.shield({ splitInto: 2 })).rejects.toThrow(
-      /after 1 of 2 transaction\(s\); 500000 zatoshis are already shielded/,
-    );
+    await expect(
+      wallet.shield({ splitInto: 2, fromTransparent: ["t1a", "t1b"] }),
+    ).rejects.toThrow(/after 1 of 2 transaction\(s\); 500000 zatoshis are already shielded/);
   });
 
   it("refuses a nonsense split count before calling the sidecar", async () => {

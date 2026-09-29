@@ -12,7 +12,12 @@ publish = false
 # Zcash. Versions are pinned and recorded in docs/TOOLCHAIN.md with the date they were
 # checked. The `orchard` feature is what makes Orchard receivers available; Ironwood
 # reuses them, so it is required even though Byte never touches the Orchard pool.
-zcash_keys = { version = "0.16.1", features = ["orchard", "sapling"] }
+# `transparent-inputs` is what makes the transparent side of the wallet exist at all:
+# deriving transparent addresses, tracking their UTXOs, and selecting them as inputs
+# for a shielding transaction. Byte never *spends* transparent value for a payment —
+# `assert_ironwood_funded` refuses that — but shielding is precisely the operation that
+# has to, and without this feature `propose_shielding` does not compile.
+zcash_keys = { version = "0.16.1", features = ["orchard", "sapling", "transparent-inputs"] }
 # `sync` bundles the lightwalletd gRPC client and the scan loop; the tls feature is what
 # lets it reach a public endpoint over https.
 zcash_client_backend = { version = "0.24.0", features = [
@@ -20,8 +25,9 @@ zcash_client_backend = { version = "0.24.0", features = [
     "lightwalletd-tonic-transport",
     "lightwalletd-tonic-tls-webpki-roots",
     "orchard",
+    "transparent-inputs",
 ] }
-zcash_client_sqlite = { version = "0.22.0", features = ["orchard"] }
+zcash_client_sqlite = { version = "0.22.0", features = ["orchard", "transparent-inputs"] }
 rusqlite = "0.37"
 secrecy_zip32 = { package = "secrecy", version = "0.8" }
 # `tls-webpki-roots` supplies the trust roots but no crypto backend; without `tls-ring`
@@ -36,6 +42,9 @@ tonic = { version = "0.14", default-features = false, features = [
 rand = "0.8"
 # BlockCache is declared with #[async_trait], so implementations must use it too.
 async-trait = "0.1"
+# Already in the tree via zcash_keys; named directly so shielding can talk about
+# transparent addresses without going through an inference dance.
+transparent = { package = "zcash_transparent", version = "0.10.0" }
 zcash_protocol = "0.10.6"
 zcash_address = "0.13.0"
 zcash_primitives = "0.30.1"

@@ -204,6 +204,39 @@ impl WalletState {
             .map_err(|e| WalletStateError::Send(e.to_string()))
     }
 
+    /// Sweep transparent value into Ironwood.
+    ///
+    /// One transaction per call. The delay-and-split policy lives in the client, where a
+    /// caller can see it; the daemon holds no timer.
+    pub async fn shield(
+        &self,
+        from: Option<&[String]>,
+        minimum_zat: Option<u64>,
+    ) -> Result<Option<crate::chain::ShieldOutcome>, WalletStateError> {
+        let keys = self.spending.as_ref().ok_or(WalletStateError::ViewOnly)?;
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        let usk = keys.usk()?;
+        sender
+            .shield(&usk, from, minimum_zat)
+            .await
+            .map_err(WalletStateError::from)
+    }
+
+    /// Send value out of Ironwood to a transparent address, publishing the amount.
+    pub async fn unshield(
+        &self,
+        to_transparent: &str,
+        amount_zat: u64,
+    ) -> Result<SendOutcome, WalletStateError> {
+        let keys = self.spending.as_ref().ok_or(WalletStateError::ViewOnly)?;
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        let usk = keys.usk()?;
+        sender
+            .unshield(&usk, to_transparent, amount_zat)
+            .await
+            .map_err(WalletStateError::from)
+    }
+
     pub fn network(&self) -> Network {
         self.network
     }

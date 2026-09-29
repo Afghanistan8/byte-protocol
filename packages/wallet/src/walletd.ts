@@ -41,6 +41,21 @@ import { isTransparentAddressLike } from "./mock.js";
 import type { ShieldingWallet, SpendingWallet, ViewOnlyWallet } from "./wallet.js";
 
 /**
+ * Deal `items` into `groups` buckets, round-robin.
+ *
+ * Round-robin rather than contiguous slices: transparent addresses tend to arrive in
+ * deposit order, so contiguous slices would put consecutive deposits in the same
+ * transaction — which is exactly the correlation the split exists to break.
+ */
+function splitBetween<T>(items: T[], groups: number): T[][] {
+  const buckets: T[][] = Array.from({ length: groups }, () => []);
+  items.forEach((item, index) => {
+    (buckets[index % groups] as T[]).push(item);
+  });
+  return buckets;
+}
+
+/**
  * A delay in seconds, drawn uniformly from the range. Zero when no range is given.
  *
  * Shared with the mock so the two backends schedule identically: a policy that behaves
@@ -239,10 +254,22 @@ export class WalletdWallet implements ShieldingWallet {
   /**
    * Sweep transparent value into Ironwood.
    *
-   * The delay and split policy is enforced **here**, in the client, not in the sidecar.
-   * The sidecar builds one transaction at a time and knows nothing about correlation
-   * resistance; the timing decision belongs where the caller can see and configure it,
-   * and keeping it out of the daemon means the daemon has no timer to get wrong.
+   * The delay policy is enforced **here**, in the client, not in the sidecar. The sidecar
+   * builds one transaction at a time and knows nothing about correlation resistance; the
+   * timing decision belongs where a caller can see and configure it, and keeping it out
+   * of the daemon means the daemon has no timer to get wrong.
+   *
+   * ## Splitting needs several transparent addresses, and this says so
+   *
+   * `propose_shielding` selects inputs by address. There is no UTXO-level knob under it,
+   * and no honest way to fake one — pulling inputs back out of a built proposal
+   * invalidates the fee it was built with. So a split sweep is several calls, each over a
+   * different address.
+   *
+   * With one address, `splitInto: 3` is refused rather than silently producing one
+   * transaction. A caller who asked for correlation resistance and got none, with no
+   * error, is worse off than one who got an error: they think they have a property they
+   * do not have.
    */
   async shield(request: ShieldRequest = {}): Promise<ShieldResult> {
     const splitInto = request.splitInto ?? 1;
@@ -250,11 +277,27 @@ export class WalletdWallet implements ShieldingWallet {
       throw new ByteProtocolError("splitInto must be a positive integer");
     }
 
+    const addresses = request.fromTransparent ?? [];
+    if (splitInto > 1 && addresses.length < splitInto) {
+      throw new ByteProtocolError(
+        `splitInto: ${splitInto} needs at least ${splitInto} transparent addresses to split ` +
+          `across, and ${addresses.length} were given. byte-walletd shields by address — ` +
+          "there is no way to divide one address's UTXOs across several transactions — so " +
+          "pass the addresses in fromTransparent, or accept a single transaction.",
+      );
+    }
+
+    // One group per transaction. Without a split, one group covering everything.
+    const groups: Array<string[] | undefined> =
+      splitInto === 1
+        ? [addresses.length > 0 ? addresses : undefined]
+        : splitBetween(addresses, splitInto);
+
     const transactions: ShieldResult["transactions"] = [];
     let shielded = 0n;
     let fees = 0n;
 
-    for (let i = 0; i < splitInto; i++) {
+    for (const group of groups) {
       const delayedSec = delayFor(request.delayRangeSec, this.#random);
       if (delayedSec > 0) await this.#sleep(delayedSec * 1000);
 
@@ -262,13 +305,8 @@ export class WalletdWallet implements ShieldingWallet {
       try {
         response = (await this.#request("POST", "/shield", {
           body: {
-            ...(request.fromTransparent !== undefined
-              ? { fromTransparent: request.fromTransparent }
-              : {}),
+            ...(group !== undefined ? { fromTransparent: group } : {}),
             ...(request.minimumZat !== undefined ? { minimumZat: request.minimumZat } : {}),
-            // Ask for a fraction of what is available, so the sidecar does not sweep
-            // everything on the first pass and leave the rest of the split with nothing.
-            fraction: 1 / (splitInto - i),
           },
           timeoutMs: this.#sendTimeoutMs,
         })) as { txid?: unknown; amountZat?: unknown; feeZat?: unknown };
@@ -278,7 +316,7 @@ export class WalletdWallet implements ShieldingWallet {
         // next decision on that falsehood.
         if (transactions.length > 0) {
           throw new ByteProtocolError(
-            `shielding failed after ${transactions.length} of ${splitInto} transaction(s); ` +
+            `shielding failed after ${transactions.length} of ${groups.length} transaction(s); ` +
               `${formatZat(shielded)} zatoshis are already shielded ` +
               `(${transactions.map((t) => t.txid).join(", ")})`,
             { cause: error },
@@ -288,9 +326,9 @@ export class WalletdWallet implements ShieldingWallet {
       }
 
       if (typeof response.txid !== "string") {
-        // Nothing left worth shielding. Not an error: the sidecar found no UTXO above the
-        // minimum, which is the normal end of a sweep.
-        break;
+        // No UTXO above the minimum at these addresses. Not an error, and not a reason to
+        // stop: another group may still have something.
+        continue;
       }
       const amountZat = String(response.amountZat ?? "0");
       const feeZat = String(response.feeZat ?? "0");
