@@ -8,212 +8,199 @@
 <meta property="og:title" content="Byte Protocol">
 <meta property="og:description" content="Private, verifiable payments for AI agents, settled in shielded Zcash.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='30' y='14' width='40' height='72' rx='20' fill='%23ff9a6a'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23f2eee6'/><path d='M50 18 L64 52 L50 84 L36 52 Z' fill='%23d99a3e' stroke='%232b2018' stroke-width='5'/></svg>">
 <style>
   :root {
-    --void: #0a0503;
-    --ground: #1a0a07;
-    --plate: rgba(40, 16, 12, 0.55);
-    --rule: rgba(255, 150, 110, 0.22);
-    --ink: #fdeee6;
-    --ink-dim: #d4a897;
-    --ink-faint: #9a6b5c;
-    --ember: #ff8a5c;
-    --ember-hot: #ffb38a;
-    --deep: #c2412c;
-    --bad: #ff6b6b;
+    --paper: #f2eee6;
+    --paper-warm: #ebe4d8;
+    --ink: #2b2018;
+    --ink-soft: #6b5c4e;
+    --ink-faint: #9a8b7c;
+    --crimson: #8c1d24;
+    --amber: #d99a3e;
+    --amber-pale: #e9c68a;
+    --desk-dark: #a9701f;
+    --rule: #cdc2b2;
+    --good: #2f6b40;
+    --bad: #a32b22;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
     --sans: "Helvetica Neue", Inter, system-ui, -apple-system, sans-serif;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
-    margin: 0; color: var(--ink); font-family: var(--sans);
-    font-size: 16px; line-height: 1.7; -webkit-font-smoothing: antialiased;
-    background:
-      radial-gradient(ellipse 120% 70% at 50% 98%, #3a1610 0%, transparent 60%),
-      radial-gradient(ellipse 90% 55% at 50% 42%, #61201a 0%, transparent 62%),
-      linear-gradient(180deg, #120705 0%, #2a0f0a 46%, #160806 100%);
-    background-attachment: fixed;
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
   }
-  /* Atmospheric haze, so the landscape reads as air rather than a flat gradient. */
-  body::after {
-    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-    background: radial-gradient(ellipse at 50% 34%, transparent 24%, rgba(10,4,3,0.82) 92%);
+  /* Paper tooth, so the cream reads as stock rather than white with the brightness down. */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.45;
+    background-image:
+      radial-gradient(circle at 20% 30%, rgba(150,130,100,0.07) 0 1px, transparent 1px),
+      radial-gradient(circle at 70% 60%, rgba(150,130,100,0.05) 0 1px, transparent 1px);
+    background-size: 7px 7px, 11px 11px;
   }
-  .wrap { position: relative; z-index: 2; max-width: 1000px; margin: 0 auto; padding: 0 20px 100px; }
+  .wrap { position: relative; z-index: 1; max-width: 1020px; margin: 0 auto; padding: 0 20px 100px; }
 
   .label {
     font-family: var(--mono); font-size: 10px; font-weight: 700;
     letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-faint);
   }
-  .label .n { color: var(--ember); }
+  .label .n { color: var(--crimson); }
 
-  /* ------------------------------------------------------------------- nav */
+  /* -------------------------------------------------------------------- nav */
   nav.top {
     position: sticky; top: 0; z-index: 20;
     display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 16px 0; backdrop-filter: blur(14px);
-    background: linear-gradient(180deg, rgba(12,5,4,0.88), rgba(12,5,4,0.4) 70%, transparent);
+    padding: 13px 0; background: rgba(242,238,230,0.94); backdrop-filter: blur(8px);
+    border-bottom: 2px solid var(--ink);
   }
-  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-  .brand .mark {
-    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
-    background: linear-gradient(160deg, var(--ember-hot), var(--deep));
-    box-shadow: 0 0 22px rgba(255,138,92,0.5);
-  }
+  .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: inherit; }
+  .brand svg { width: 25px; height: 25px; }
   .brand .name {
-    font-family: var(--mono); font-size: 14px; font-weight: 700;
-    letter-spacing: 0.26em; color: var(--ink);
+    font-family: var(--mono); font-size: 14px; font-weight: 800;
+    letter-spacing: 0.26em; color: var(--crimson);
   }
-  nav.top .links { display: none; gap: 30px; }
-  @media (min-width: 760px) { nav.top .links { display: flex; } }
+  nav.top .links { display: none; gap: 24px; }
+  @media (min-width: 780px) { nav.top .links { display: flex; } }
   nav.top .links a {
-    color: var(--ink-dim); text-decoration: none; font-size: 14px; font-weight: 500;
+    color: var(--ink-soft); text-decoration: none; font-size: 12px;
+    font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
   }
-  nav.top .links a:hover { color: var(--ember-hot); }
+  nav.top .links a:hover { color: var(--crimson); }
 
   .launch {
-    padding: 10px 22px; border-radius: 999px; text-decoration: none;
-    font-size: 14px; font-weight: 700; color: #2a0b05; white-space: nowrap;
-    background: linear-gradient(140deg, var(--ember-hot), var(--ember));
-    box-shadow: 0 5px 24px rgba(255,138,92,0.38);
+    padding: 9px 20px; text-decoration: none; background: var(--crimson); color: var(--paper);
+    font-size: 12px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); white-space: nowrap;
   }
-  .launch:hover { filter: brightness(1.09); }
+  .launch:hover { transform: translate(1px, 1px); box-shadow: 2px 2px 0 var(--ink); }
 
-  /* ------------------------------------------------------------------ hero */
-  .hero { text-align: center; padding: 58px 0 20px; }
+  /* ------------------------------------------------------------------ scene */
+  .scene { margin: 14px -20px 0; }
+  .scene svg { width: 100%; height: auto; display: block; }
+
+  /* ------------------------------------------------------------------- hero */
+  .hero { text-align: center; padding: 22px 0 6px; }
   .hero h1 {
-    margin: 0 0 20px; font-size: clamp(34px, 7.2vw, 74px); line-height: 1.02;
-    font-weight: 800; letter-spacing: -0.035em;
+    margin: 0 0 16px; font-size: clamp(30px, 6.2vw, 58px); line-height: 1.02;
+    font-weight: 900; letter-spacing: -0.03em; text-transform: uppercase; color: var(--crimson);
   }
-  .hero h1 .warm {
-    background: linear-gradient(100deg, var(--ember-hot), var(--deep));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .hero p.lede {
-    margin: 0 auto; max-width: 640px; font-size: clamp(15px, 2vw, 18px); color: var(--ink-dim);
-  }
-  .hero .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+  .hero h1 .amber { color: var(--amber); -webkit-text-stroke: 1px var(--ink); }
+  .hero p.lede { margin: 0 auto; max-width: 630px; color: var(--ink-soft); }
+  .hero .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
   .btn {
-    padding: 13px 28px; border-radius: 999px; text-decoration: none;
-    font-size: 14px; font-weight: 700; border: 1px solid var(--rule); color: var(--ink);
+    padding: 12px 26px; text-decoration: none; font-size: 12px; font-weight: 800;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink);
+    background: var(--paper); border: 2px solid var(--ink); box-shadow: 4px 4px 0 var(--ink);
   }
-  .btn.primary {
-    border-color: transparent; color: #2a0b05;
-    background: linear-gradient(140deg, var(--ember-hot), var(--ember));
-    box-shadow: 0 5px 26px rgba(255,138,92,0.34);
-  }
-  .btn:hover { border-color: var(--ember); }
-  .btn.primary:hover { filter: brightness(1.09); }
-
-  /* --------------------------------------------------------------- monolith */
-  .monolith { display: flex; justify-content: center; margin: 46px 0 8px; position: relative; z-index: 1; }
-  .monolith svg { width: min(310px, 66vw); height: auto; }
-  @media (prefers-reduced-motion: no-preference) {
-    .monolith .breathe { animation: breathe 9s ease-in-out infinite; transform-origin: 50% 50%; }
-    .monolith .drift { animation: drift 26s linear infinite; }
-  }
-  @keyframes breathe { 0%,100% { opacity: 0.92; } 50% { opacity: 1; } }
-  @keyframes drift { to { transform: translateY(-34px); } }
+  .btn.primary { background: var(--amber); }
+  .btn:hover { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--ink); }
 
   /* ----------------------------------------------------------------- plates */
-  section { margin-top: 82px; scroll-margin-top: 80px; }
-  h2 { margin: 6px 0 12px; font-size: clamp(23px, 3.6vw, 33px); font-weight: 800; letter-spacing: -0.025em; }
-  section > p { color: var(--ink-dim); max-width: 660px; }
-  strong { color: var(--ink); font-weight: 700; }
-  em { font-style: normal; color: var(--ember-hot); }
+  section { margin-top: 72px; scroll-margin-top: 76px; }
+  h2 {
+    margin: 6px 0 12px; font-size: clamp(22px, 3.6vw, 31px); font-weight: 900;
+    letter-spacing: -0.025em; text-transform: uppercase; color: var(--crimson);
+  }
+  section > p { color: var(--ink-soft); max-width: 660px; }
+  strong { color: var(--ink); font-weight: 800; }
+  em { font-style: normal; color: var(--crimson); font-weight: 700; }
 
   .plate {
-    position: relative; background: var(--plate); border: 1px solid var(--rule);
-    border-radius: 14px; padding: 26px 22px; backdrop-filter: blur(9px);
+    background: var(--paper-warm); border: 2px solid var(--ink);
+    box-shadow: 5px 5px 0 var(--ink); padding: 22px 20px;
   }
-  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; margin-top: 22px; }
+  .grid { display: grid; gap: 18px; grid-template-columns: 1fr; margin-top: 24px; }
   @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
   @media (min-width: 900px) { .grid.four { grid-template-columns: repeat(4, 1fr); } }
-  .plate h3 { margin: 8px 0 7px; font-size: 17px; font-weight: 700; }
-  .plate p { margin: 0; font-size: 14px; color: var(--ink-dim); }
-
+  .plate h3 { margin: 7px 0 6px; font-size: 16px; font-weight: 800; }
+  .plate p { margin: 0; font-size: 14px; color: var(--ink-soft); }
   .step .num {
-    font-family: var(--mono); font-size: 11px; font-weight: 700;
-    letter-spacing: 0.2em; color: var(--ember);
+    font-family: var(--mono); font-size: 10px; font-weight: 800;
+    letter-spacing: 0.2em; color: var(--crimson);
   }
 
   code {
-    font-family: var(--mono); font-size: 12px; background: rgba(10,4,3,0.7);
-    border: 1px solid var(--rule); border-radius: 5px; padding: 1px 6px; word-break: break-all;
+    font-family: var(--mono); font-size: 12px; background: var(--paper);
+    border: 1px solid var(--rule); padding: 1px 5px; word-break: break-all;
   }
   pre {
-    font-family: var(--mono); background: rgba(10,4,3,0.75); border: 1px solid var(--rule);
-    border-radius: 10px; padding: 15px; overflow-x: auto; font-size: 12px; line-height: 1.65;
+    font-family: var(--mono); background: var(--ink); color: var(--paper);
+    border: 2px solid var(--ink); box-shadow: 5px 5px 0 var(--desk-dark);
+    padding: 16px; overflow-x: auto; font-size: 12px; line-height: 1.7;
   }
-  pre .c { color: var(--ink-faint); }
-  pre .g { color: var(--ember-hot); }
+  pre .c { color: #8e8070; }
+  pre .g { color: var(--amber-pale); }
 
-  ul { padding-left: 19px; color: var(--ink-dim); font-size: 14px; }
+  ul { padding-left: 19px; color: var(--ink-soft); font-size: 14px; }
   li { margin: 8px 0; }
-  li::marker { color: var(--ember); }
+  li::marker { color: var(--crimson); }
 
-  /* ------------------------------------------------------------------ demo */
+  /* ------------------------------------------------------------------- demo */
   .field { margin-top: 13px; }
   .field label { display: block; margin-bottom: 5px; }
   .field input {
-    width: 100%; padding: 11px 13px; border-radius: 8px; background: rgba(10,4,3,0.75);
-    color: var(--ink); font-family: var(--mono); font-size: 13px;
-    border: 1px solid var(--rule); outline: none;
+    width: 100%; padding: 10px 12px; background: var(--paper); color: var(--ink);
+    font-family: var(--mono); font-size: 13px; border: 2px solid var(--ink); outline: none;
   }
-  .field input:focus { border-color: var(--ember); }
-  .readout { margin-top: 19px; padding: 16px; border-radius: 10px; background: rgba(10,4,3,0.75); border: 1px solid var(--rule); }
+  .field input:focus { border-color: var(--crimson); }
+  .readout { margin-top: 18px; padding: 15px; background: var(--paper); border: 2px dashed var(--ink); }
   .readout .memo { font-family: var(--mono); font-size: 13px; word-break: break-all; line-height: 1.85; margin: 6px 0 0; }
   .readout .memo .t { color: var(--ink-faint); }
-  .readout .memo .b { color: var(--ember-hot); font-weight: 700; }
-  .verdict { margin-top: 13px; font-size: 13px; font-weight: 600; }
-  .verdict.ok { color: var(--ember-hot); }
+  .readout .memo .b { color: var(--crimson); font-weight: 800; }
+  .verdict { margin-top: 12px; font-size: 13px; font-weight: 700; }
+  .verdict.ok { color: var(--good); }
   .verdict.no { color: var(--bad); }
 
   .uri {
-    display: block; margin-top: 12px; padding: 13px; border-radius: 9px;
-    background: rgba(10,4,3,0.75); border: 1px solid var(--rule);
-    font-family: var(--mono); font-size: 11px; word-break: break-all;
-    color: var(--ink-dim); text-decoration: none; line-height: 1.7;
+    display: block; margin-top: 12px; padding: 12px; background: var(--paper);
+    border: 2px solid var(--ink); font-family: var(--mono); font-size: 11px;
+    word-break: break-all; color: var(--ink-soft); text-decoration: none; line-height: 1.7;
   }
-  .uri:hover { border-color: var(--ember); color: var(--ink); }
+  .uri:hover { color: var(--crimson); }
   .copy {
-    margin-top: 10px; padding: 9px 18px; border-radius: 999px; cursor: pointer;
-    background: transparent; border: 1px solid var(--rule); color: var(--ink);
-    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    margin-top: 10px; padding: 8px 18px; cursor: pointer; background: var(--paper);
+    border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+    font-family: var(--sans); font-size: 11px; font-weight: 800;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink);
   }
-  .copy:hover { border-color: var(--ember); }
+  .copy:hover { transform: translate(1px,1px); box-shadow: 2px 2px 0 var(--ink); }
 
-  .wallets { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+  .wallets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
   .wallets span {
-    padding: 6px 13px; border-radius: 999px; border: 1px solid var(--rule);
-    font-size: 13px; color: var(--ink-dim);
+    padding: 5px 12px; border: 2px solid var(--ink); background: var(--paper);
+    font-size: 13px; font-weight: 700;
   }
-  .wallets span.partial { opacity: 0.6; }
+  .wallets span.partial { border-style: dashed; color: var(--ink-faint); }
 
-  .tx { display: block; padding: 13px 0; border-bottom: 1px solid rgba(255,150,110,0.11); text-decoration: none; }
+  .tx { display: block; padding: 12px 0; border-bottom: 1px dashed var(--rule); text-decoration: none; color: inherit; }
   .tx:last-child { border-bottom: 0; }
-  .tx .what { color: var(--ink); font-size: 14px; font-weight: 600; }
+  .tx .what { font-size: 14px; font-weight: 800; }
   .tx .hash { font-family: var(--mono); color: var(--ink-faint); font-size: 11px; word-break: break-all; }
-  .tx:hover .hash { color: var(--ember); }
+  .tx:hover .hash { color: var(--crimson); }
 
   .stat .big {
-    font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
-    background: linear-gradient(100deg, var(--ember-hot), var(--deep));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+    font-size: 40px; font-weight: 900; letter-spacing: -0.03em; color: var(--crimson);
+    line-height: 1; margin-bottom: 6px;
   }
 
-  footer { margin-top: 84px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  footer { margin-top: 78px; padding-top: 22px; border-top: 2px solid var(--ink); }
   footer p { font-size: 13px; color: var(--ink-faint); }
-  footer a { color: var(--ink-dim); }
+  footer a { color: var(--ink-soft); }
 </style>
 </head>
 <body>
 <div class="wrap">
 
 <nav class="top">
-  <a class="brand" href="#top"><span class="mark"></span><span class="name">BYTE</span></a>
+  <a class="brand" href="#top">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <path d="M50 12 L66 50 L50 88 L34 50 Z" fill="#d99a3e" stroke="#2b2018" stroke-width="6" stroke-linejoin="round"/>
+    </svg>
+    <span class="name">BYTE</span>
+  </a>
   <div class="links">
     <a href="#how">Protocol</a>
     <a href="#pay">Pay</a>
@@ -223,8 +210,160 @@
   <a class="launch" href="app/">Launch App</a>
 </nav>
 
-<div class="hero" id="top">
-  <h1>Private payments<br><span class="warm">for AI agents.</span></h1>
+<!-- ============================================================== the scene -->
+<div class="scene" id="top">
+  <svg viewBox="0 0 1030 700" role="img"
+       aria-label="A desk with a monitor showing Byte Protocol, a crystal cluster, a pen, a notebook of annotations, and a card reading Zcash 2026">
+    <defs>
+      <!-- A little wobble, so strokes read as drawn rather than plotted. -->
+      <filter id="hand" x="-6%" y="-6%" width="112%" height="112%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.016" numOctaves="3" seed="12" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="2.4" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+      <filter id="handSoft" x="-6%" y="-6%" width="112%" height="112%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.03" numOctaves="2" seed="4" result="n"/>
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.4" xChannelSelector="R" yChannelSelector="G"/>
+      </filter>
+      <filter id="grain">
+        <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="4" seed="3"/>
+        <feColorMatrix values="0 0 0 0 0.62  0 0 0 0 0.43  0 0 0 0 0.14  0 0 0 0.5 0"/>
+        <feComposite in2="SourceGraphic" operator="in"/>
+      </filter>
+      <linearGradient id="deskFill" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#dcab58"/>
+        <stop offset="100%" stop-color="#b47a26"/>
+      </linearGradient>
+      <linearGradient id="crystalFill" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#f2cd92"/>
+        <stop offset="55%" stop-color="#dda04d"/>
+        <stop offset="100%" stop-color="#bf7e2b"/>
+      </linearGradient>
+    </defs>
+
+    <g stroke="#2b2018" stroke-linejoin="round" stroke-linecap="round" fill="none">
+
+      <!-- ------------------------------------------------------------ desk -->
+      <g filter="url(#hand)">
+        <path d="M0 430 C 150 404, 300 448, 470 424 C 650 400, 820 446, 1030 416 L1030 700 L0 700 Z"
+              fill="url(#deskFill)" stroke-width="3"/>
+      </g>
+      <path d="M0 430 C 150 404, 300 448, 470 424 C 650 400, 820 446, 1030 416 L1030 700 L0 700 Z"
+            fill="#000" opacity="0.2" filter="url(#grain)" stroke="none"/>
+
+      <!-- --------------------------------------------------------- monitor -->
+      <g filter="url(#hand)">
+        <path d="M470 400 L440 470 L600 470 L570 400 Z" fill="#e6e0d4" stroke-width="3"/>
+        <rect x="408" y="466" width="224" height="26" rx="8" fill="#ded7c9" stroke-width="3"/>
+        <rect x="196" y="96" width="618" height="368" rx="16" fill="#b9853f" stroke-width="4"/>
+        <rect x="216" y="116" width="578" height="308" rx="6" fill="#f4f0e8" stroke-width="3"/>
+        <circle cx="505" cy="444" r="9" fill="#3a2d22" stroke-width="3"/>
+      </g>
+
+      <!-- ------------------------------------------------- screen contents -->
+      <g font-family="Helvetica Neue, Inter, system-ui, sans-serif" stroke="none">
+        <text x="372" y="198" text-anchor="end" font-size="35" font-weight="900" fill="#8c1d24">BYTE</text>
+        <text x="372" y="236" text-anchor="end" font-size="35" font-weight="900" fill="#8c1d24">PROTOCOL</text>
+        <text x="372" y="264" text-anchor="end" font-size="14" font-weight="800" fill="#d99a3e" letter-spacing="3.2">SHIELDED</text>
+
+        <text x="640" y="202" font-size="30" font-weight="900" fill="#d99a3e" stroke="#2b2018" stroke-width="0.9">PRIVATE</text>
+        <text x="640" y="236" font-size="30" font-weight="900" fill="#d99a3e" stroke="#2b2018" stroke-width="0.9">PAYMENTS</text>
+        <text x="640" y="264" font-size="12.5" font-weight="800" fill="#8c1d24" letter-spacing="2.4">FOR AI AGENTS</text>
+      </g>
+
+      <!-- the shielded pool, drawn as a crystal -->
+      <g filter="url(#handSoft)">
+        <path d="M505 146 L528 186 L522 330 L488 330 L482 186 Z" fill="url(#crystalFill)" stroke-width="3"/>
+        <path d="M505 146 L505 330" stroke-width="1.5" opacity="0.4"/>
+        <path d="M482 186 L528 186" stroke-width="1.5" opacity="0.4"/>
+        <path d="M452 246 L470 268 L464 344 L440 344 L436 268 Z" fill="url(#crystalFill)" stroke-width="2.6"/>
+        <path d="M560 250 L576 272 L572 342 L550 342 L546 272 Z" fill="url(#crystalFill)" stroke-width="2.6"/>
+        <path d="M440 330 L470 306 L505 334 L540 306 L570 330 L562 352 L448 352 Z"
+              fill="#e3ab5e" stroke-width="2.6"/>
+      </g>
+      <circle cx="505" cy="318" r="21" fill="#f4f0e8" stroke-width="2.6"/>
+      <text x="505" y="323" text-anchor="middle" font-size="12" font-weight="900" fill="#2b2018" stroke="none"
+            font-family="Helvetica Neue, Inter, sans-serif">100%</text>
+
+      <!-- sync bar -->
+      <g filter="url(#handSoft)">
+        <rect x="430" y="378" width="152" height="18" fill="#f4f0e8" stroke-width="2.4"/>
+        <rect x="436" y="384" width="42" height="6" fill="#c9903f" stroke="none"/>
+        <rect x="486" y="384" width="26" height="6" fill="#c9903f" stroke="none"/>
+      </g>
+
+      <!-- ------------------------------------------------- crystal cluster -->
+      <g filter="url(#handSoft)" transform="translate(58, 428)">
+        <path d="M60 4 L78 34 L72 130 L44 130 L38 34 Z" fill="url(#crystalFill)" stroke-width="3"/>
+        <path d="M14 56 L32 80 L28 142 L4 142 L0 80 Z" fill="url(#crystalFill)" stroke-width="2.6"/>
+        <path d="M96 48 L116 76 L112 140 L88 140 L84 76 Z" fill="url(#crystalFill)" stroke-width="2.6"/>
+        <path d="M-6 132 L36 112 L70 138 L104 112 L134 134 L128 164 L2 164 Z" fill="#d79c4d" stroke-width="2.6"/>
+      </g>
+
+      <!-- ------------------------------------------------------------- pen -->
+      <g filter="url(#handSoft)" transform="translate(206, 638) rotate(-13)">
+        <rect x="0" y="0" width="150" height="15" rx="7" fill="#efe9dd" stroke-width="2.6"/>
+        <path d="M150 0 L176 7.5 L150 15 Z" fill="#c9903f" stroke-width="2.6"/>
+        <rect x="26" y="0" width="9" height="15" fill="#c9903f" stroke="none"/>
+      </g>
+
+      <!-- ------------------------------------------------------ the letter -->
+      <g filter="url(#handSoft)" transform="translate(788, 438)">
+        <rect x="0" y="0" width="226" height="96" fill="#f4f0e8" stroke-width="3"/>
+        <path d="M18 -8 L38 -8 L38 26 L28 18 L18 26 Z" fill="#8c1d24" stroke-width="2.4"/>
+        <g font-family="Helvetica Neue, Inter, sans-serif" stroke="none">
+          <text x="56" y="26" font-size="10" font-weight="800" fill="#6b5c4e" letter-spacing="2.4">ZCASH</text>
+          <text x="160" y="26" text-anchor="end" font-size="10.5" font-weight="700" fill="#9a8b7c" font-style="italic">2026</text>
+          <text x="56" y="53" font-size="19" font-weight="800" fill="#2b2018">Ironwood</text>
+          <text x="56" y="80" font-size="9.5" font-weight="800" fill="#6b5c4e" letter-spacing="1.5">SHIELDED POOL</text>
+        </g>
+        <line x1="56" y1="63" x2="196" y2="63" stroke-width="1.4" opacity="0.3"/>
+        <circle cx="200" cy="74" r="14" fill="#f4f0e8" stroke-width="2.4"/>
+        <path d="M195 74 L205 74 M201 70 L205 74 L201 78" stroke-width="2"/>
+      </g>
+
+      <!-- -------------------------------------------------------- notebook -->
+      <g transform="translate(556, 566)">
+        <g filter="url(#handSoft)">
+          <rect x="6" y="8" width="420" height="180" fill="#e7e1d5" stroke-width="2.4"/>
+          <rect x="0" y="0" width="420" height="180" fill="#f6f2ea" stroke-width="3"/>
+        </g>
+
+        <g filter="url(#handSoft)" stroke-width="2.4">
+          <path d="M42 120 C 96 78, 150 108, 206 74 C 258 44, 312 84, 372 52"/>
+          <path d="M120 96 L128 62 M176 84 L182 48 M242 66 L248 34 M300 74 L306 40"/>
+          <path d="M56 130 L84 112 L112 130"/>
+        </g>
+
+        <g font-family="Helvetica Neue, Inter, sans-serif" stroke="none" fill="#2b2018">
+          <text x="12" y="66" font-size="12.5" font-weight="700" transform="rotate(-6 12 66)">memo binds the invoice</text>
+          <text x="236" y="28" font-size="12.5" font-weight="700" transform="rotate(-7 236 28)">view-only verify</text>
+          <text x="292" y="152" font-size="12.5" font-weight="700" transform="rotate(4 292 152)">no payer identity</text>
+          <text x="34" y="168" font-size="12.5" font-weight="700" transform="rotate(3 34 168)">change stays shielded</text>
+        </g>
+
+        <g filter="url(#handSoft)" transform="translate(222, 96)">
+          <ellipse cx="0" cy="0" rx="25" ry="14" fill="#f6f2ea" stroke-width="2.2"/>
+          <text x="0" y="4" text-anchor="middle" font-size="9" font-weight="800" fill="#2b2018" stroke="none"
+                font-family="Helvetica Neue, Inter, sans-serif">PAY</text>
+          <path d="M21 8 L43 26 L33 28 L37 42 L30 44 L26 30 L19 34 Z" fill="#c9903f" stroke-width="2.2"/>
+        </g>
+      </g>
+
+      <!-- ----------------------------------------------------------- mouse -->
+      <g filter="url(#handSoft)" transform="translate(906, 586)">
+        <ellipse cx="34" cy="28" rx="36" ry="27" fill="#efe9dd" stroke-width="2.6"/>
+        <circle cx="10" cy="8" r="12" fill="#efe9dd" stroke-width="2.4"/>
+        <circle cx="58" cy="6" r="12" fill="#efe9dd" stroke-width="2.4"/>
+        <circle cx="26" cy="22" r="2.6" fill="#2b2018" stroke="none"/>
+        <circle cx="44" cy="22" r="2.6" fill="#2b2018" stroke="none"/>
+        <path d="M70 34 C 96 40, 104 58, 86 66" stroke-width="2.4"/>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<div class="hero">
+  <h1>Private payments<br><span class="amber">for AI agents</span></h1>
   <p class="lede">
     Byte is built on Zcash. It gives an agent everything it needs to make and receive
     private, verifiable payments &mdash; settled in the shielded <strong>Ironwood</strong> pool,
@@ -234,65 +373,6 @@
     <a class="btn primary" href="app/">Launch the app</a>
     <a class="btn" href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Read the code</a>
   </div>
-
-  <div class="monolith">
-    <svg viewBox="0 0 300 470" role="img" aria-label="A shielded value pool">
-      <defs>
-        <!-- Marbled interior, generated rather than drawn, so the slab reads as
-             something with depth rather than a flat shape. -->
-        <filter id="marble" x="-25%" y="-25%" width="150%" height="150%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.011 0.05" numOctaves="4" seed="7" result="n"/>
-          <feDisplacementMap in="SourceGraphic" in2="n" scale="34" xChannelSelector="R" yChannelSelector="G"/>
-          <feGaussianBlur stdDeviation="5"/>
-        </filter>
-        <filter id="glow" x="-70%" y="-45%" width="240%" height="190%">
-          <feGaussianBlur stdDeviation="15" result="b"/>
-          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-        <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stop-color="#f7a887"/>
-          <stop offset="18%"  stop-color="#e8714e"/>
-          <stop offset="40%"  stop-color="#c8422b"/>
-          <stop offset="62%"  stop-color="#ef8a63"/>
-          <stop offset="82%"  stop-color="#f9c4a6"/>
-          <stop offset="100%" stop-color="#fff2e8"/>
-        </linearGradient>
-        <radialGradient id="halo" cx="50%" cy="56%" r="52%">
-          <stop offset="0%"   stop-color="#ff8a5c" stop-opacity="0.58"/>
-          <stop offset="100%" stop-color="#ff8a5c" stop-opacity="0"/>
-        </radialGradient>
-        <clipPath id="slab">
-          <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
-                   C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"/>
-        </clipPath>
-      </defs>
-
-      <ellipse cx="150" cy="255" rx="148" ry="215" fill="url(#halo)"/>
-
-      <g filter="url(#glow)">
-        <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
-                 C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"
-              fill="url(#body)" class="breathe"/>
-      </g>
-
-      <!-- Strata drifting inside the slab: value moving through a pool you cannot see into. -->
-      <g clip-path="url(#slab)" opacity="0.8" filter="url(#marble)">
-        <g class="drift">
-          <rect x="20" y="60"  width="260" height="26" fill="#ffffff" opacity="0.72"/>
-          <rect x="20" y="146" width="260" height="19" fill="#6d1610" opacity="0.8"/>
-          <rect x="20" y="228" width="260" height="30" fill="#ffffff" opacity="0.6"/>
-          <rect x="20" y="318" width="260" height="22" fill="#6d1610" opacity="0.74"/>
-          <rect x="20" y="398" width="260" height="26" fill="#ffffff" opacity="0.66"/>
-          <rect x="20" y="482" width="260" height="20" fill="#6d1610" opacity="0.66"/>
-        </g>
-      </g>
-
-      <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
-               C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"
-            fill="none" stroke="#fff0e6" stroke-opacity="0.32" stroke-width="1.2"/>
-    </svg>
-  </div>
-  <p class="label">Amounts &middot; Parties &middot; Balances &mdash; not on chain</p>
 </div>
 
 <!-- ------------------------------------------------------------------ how -->
@@ -329,20 +409,20 @@
     </div>
   </div>
 
-<pre style="margin-top:22px"><span class="c">// an agent asks for something that costs money</span>
-GET /report                              <span class="c">→</span> <span class="g">402</span> + invoice
+<pre style="margin-top:24px"><span class="c">// an agent asks for something that costs money</span>
+GET /report                              <span class="c">&#8594;</span> <span class="g">402</span> + invoice
 
 <span class="c">// it pays — shielded. an observer sees a transaction happened, nothing more</span>
-BYTE1|&lt;invoiceId&gt;|&lt;binding&gt;               <span class="c">→</span> <span class="g">ironwood</span>
+BYTE1|&lt;invoiceId&gt;|&lt;binding&gt;               <span class="c">&#8594;</span> <span class="g">ironwood</span>
 
 <span class="c">// it retries with the proof; the payee verifies with a view-only key</span>
-GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class="g">200</span> + the report</pre>
+GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span class="g">200</span> + the report</pre>
 </section>
 
 <!-- ------------------------------------------------------------------ pay -->
 <section id="pay">
   <p class="label"><span class="n">02.</span> Any Zcash wallet</p>
-  <h2>Pay a Byte invoice from the wallet you already use</h2>
+  <h2>Pay from the wallet you already use</h2>
   <p>
     There is no wallet-connect standard for Zcash yet &mdash; a ZCG grant to build one was
     approved in August 2026, with milestones running into <strong>late 2027</strong>. What
@@ -358,20 +438,23 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
     <a class="uri" id="zip321" href="#">&mdash;</a>
     <button class="copy" id="copy">Copy URI</button>
 
-    <p class="label" style="margin-top:22px">Wallets that support shielded ZEC and ZIP-321</p>
+    <p class="label" style="margin-top:22px">Wallets supporting shielded ZEC and ZIP-321</p>
     <div class="wallets">
+      <span>Noir</span>
+      <span>MetaMask snap</span>
       <span>Zodl</span>
       <span>YWallet</span>
       <span>Zingo</span>
       <span>Zecwallet</span>
       <span>Ledger</span>
+      <span>Brave</span>
       <span class="partial">Nighthawk &middot; partial</span>
       <span class="partial">Zelcore &middot; partial</span>
     </div>
     <p style="margin-top:14px; font-size:13px; color: var(--ink-faint)">
-      Zodl is the February 2026 rebrand of Zashi. Ledger added shielded signing in August 2026.
-      Nighthawk and Zelcore handle shielded ZEC in specific setups, but unified-address support
-      is incomplete &mdash; listed as partial rather than supported.
+      Noir and the ChainSafe MetaMask snap can be connected directly from
+      <a href="app/" style="color:var(--crimson)">the app</a>. The rest can pay a Byte invoice
+      but cannot report back, because no standard lets them.
     </p>
   </div>
 </section>
@@ -461,7 +544,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
     </ul>
   </div>
 
-  <div class="plate" style="margin-top:16px">
+  <div class="plate" style="margin-top:18px">
     <p class="label">Honest status</p>
     <p style="margin-top:8px">
       Byte settles in shielded Zcash and nowhere else. It is not a bridge and wraps nothing.
@@ -504,7 +587,7 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
   }
 
   function escapeHtml(text) {
-    return text.replace(/[&<>"']/g, function (c) {
+    return String(text).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
