@@ -1,8 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
+  "installCommand": "",
   "buildCommand": "echo \"static site; nothing to build\"",
-  "outputDirectory": ".",
+  "outputDirectory": "apps/site",
   "cleanUrls": true,
   "headers": [
     {
@@ -12,14 +13,8 @@
           "key": "Content-Security-Policy",
           "value": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
         },
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        },
-        {
-          "key": "Referrer-Policy",
-          "value": "no-referrer"
-        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" },
         {
           "key": "Permissions-Policy",
           "value": "geolocation=(), microphone=(), camera=(), interest-cohort=()"
@@ -30,6 +25,5 @@
         }
       ]
     }
-  ],
-  "installCommand": ""
+  ]
 }

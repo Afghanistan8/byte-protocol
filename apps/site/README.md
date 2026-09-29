@@ -38,5 +38,18 @@ page     : cf8918f31c231522fdaebe6b28b6a36f
 
 ## Deploying
 
-Vercel, with **Root Directory** set to `apps/site` and the framework preset left as **Other**.
-There is nothing to build.
+There is a `vercel.json` at the **repository root** pointing `outputDirectory` at `apps/site`,
+so the default Root Directory works — leave Root Directory empty or `.`.
+
+A second `vercel.json` lives here, so it also works if Root Directory is set to `apps/site`.
+Either is fine; both skip install and build.
+
+Both set `installCommand: ""` and override `buildCommand`. Without that, Vercel would find the
+root `package.json`, run its `build` script, and try to build all twenty-eight workspace
+targets to publish one HTML file.
+
+**If you see a 404**, the Root Directory is almost certainly still pointing somewhere else
+from an earlier import. Check Project Settings → Build and Deployment → Root Directory. The
+tell is that the custom response headers below are missing: if `curl -I` shows no
+`Content-Security-Policy`, Vercel never read a `vercel.json` at all, which means it was
+looking in the wrong directory.
