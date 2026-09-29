@@ -4,245 +4,390 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Byte Protocol</title>
-<meta name="description" content="A privacy layer for AI agent payments, settling in shielded Zcash.">
+<meta name="description" content="Byte is built on Zcash. Everything an AI agent needs to make and receive private, verifiable payments, settled in the shielded Ironwood pool.">
 <meta property="og:title" content="Byte Protocol">
-<meta property="og:description" content="A privacy layer for AI agent payments, settling in shielded Zcash.">
+<meta property="og:description" content="Private, verifiable payments for AI agents, settled in shielded Zcash.">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='34' fill='none' stroke='%237ef0b2' stroke-width='6'/></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='30' y='14' width='40' height='72' rx='20' fill='%23ff9a6a'/></svg>">
 <style>
   :root {
-    --ground: #070807;
-    --plate: #0c0e0d;
-    --grid: rgba(120, 140, 130, 0.07);
-    --rule: rgba(150, 170, 160, 0.22);
-    --ink: #eef2ef;
-    --ink-dim: #9fada6;
-    --ink-faint: #6c7a74;
-    --accent: #7ef0b2;
-    --bad: #f08d8d;
+    --void: #0a0503;
+    --ground: #1a0a07;
+    --plate: rgba(40, 16, 12, 0.55);
+    --rule: rgba(255, 150, 110, 0.22);
+    --ink: #fdeee6;
+    --ink-dim: #d4a897;
+    --ink-faint: #9a6b5c;
+    --ember: #ff8a5c;
+    --ember-hot: #ffb38a;
+    --deep: #c2412c;
+    --bad: #ff6b6b;
     --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Helvetica Neue", Inter, system-ui, -apple-system, sans-serif;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body {
-    margin: 0; background: var(--ground); color: var(--ink);
-    font-family: var(--mono); font-size: 15px; line-height: 1.7;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; color: var(--ink); font-family: var(--sans);
+    font-size: 16px; line-height: 1.7; -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(ellipse 120% 70% at 50% 98%, #3a1610 0%, transparent 60%),
+      radial-gradient(ellipse 90% 55% at 50% 42%, #61201a 0%, transparent 62%),
+      linear-gradient(180deg, #120705 0%, #2a0f0a 46%, #160806 100%);
+    background-attachment: fixed;
   }
-  body::before {
-    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 44px 44px;
-  }
+  /* Atmospheric haze, so the landscape reads as air rather than a flat gradient. */
   body::after {
-    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background: radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(0,0,0,0.78) 100%);
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(ellipse at 50% 34%, transparent 24%, rgba(10,4,3,0.82) 92%);
   }
-  .wrap { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 0 16px 90px; }
+  .wrap { position: relative; z-index: 2; max-width: 1000px; margin: 0 auto; padding: 0 20px 100px; }
 
   .label {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.22em;
-    text-transform: uppercase; color: var(--ink-faint);
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-faint);
   }
-  .label .n { color: var(--accent); }
+  .label .n { color: var(--ember); }
 
-  /* ------------------------------------------------------------------ header */
-  header.top {
-    display: flex; justify-content: space-between; align-items: baseline;
-    gap: 16px; flex-wrap: wrap; padding: 26px 0 18px; border-bottom: 1px solid var(--rule);
+  /* ------------------------------------------------------------------- nav */
+  nav.top {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 16px 0; backdrop-filter: blur(14px);
+    background: linear-gradient(180deg, rgba(12,5,4,0.88), rgba(12,5,4,0.4) 70%, transparent);
   }
-  .wordmark { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.34em; }
-  .wordmark span { color: var(--accent); }
-  header.top nav { display: flex; gap: 20px; }
-  header.top a { color: var(--ink-faint); text-decoration: none; font-size: 11px;
-    font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
-  header.top a:hover { color: var(--accent); }
-
-  /* -------------------------------------------------------------------- hero */
-  .hero { padding: 72px 0 40px; text-align: center; }
-  .hero h2 {
-    margin: 0 0 22px; font-size: clamp(26px, 5vw, 42px); font-weight: 700;
-    letter-spacing: -0.02em; line-height: 1.22;
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+  .brand .mark {
+    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
+    background: linear-gradient(160deg, var(--ember-hot), var(--deep));
+    box-shadow: 0 0 22px rgba(255,138,92,0.5);
   }
-  .hero h2 em { font-style: normal; color: var(--accent); }
-  .hero p { margin: 0 auto; max-width: 620px; color: var(--ink-dim); font-weight: 500; }
+  .brand .name {
+    font-family: var(--mono); font-size: 14px; font-weight: 700;
+    letter-spacing: 0.26em; color: var(--ink);
+  }
+  nav.top .links { display: none; gap: 30px; }
+  @media (min-width: 760px) { nav.top .links { display: flex; } }
+  nav.top .links a {
+    color: var(--ink-dim); text-decoration: none; font-size: 14px; font-weight: 500;
+  }
+  nav.top .links a:hover { color: var(--ember-hot); }
 
-  .orb { display: flex; justify-content: center; margin: 44px 0 10px; }
-  .orb svg { width: min(210px, 50vw); }
-  .orb .ring { fill: none; stroke: var(--accent); stroke-width: 0.6; opacity: 0.5; }
-  .orb .ring.faint { opacity: 0.18; }
-  .orb .core { fill: none; stroke: var(--ink); stroke-width: 1; opacity: 0.85; }
+  .launch {
+    padding: 10px 22px; border-radius: 999px; text-decoration: none;
+    font-size: 14px; font-weight: 700; color: #2a0b05; white-space: nowrap;
+    background: linear-gradient(140deg, var(--ember-hot), var(--ember));
+    box-shadow: 0 5px 24px rgba(255,138,92,0.38);
+  }
+  .launch:hover { filter: brightness(1.09); }
+
+  /* ------------------------------------------------------------------ hero */
+  .hero { text-align: center; padding: 58px 0 20px; }
+  .hero h1 {
+    margin: 0 0 20px; font-size: clamp(34px, 7.2vw, 74px); line-height: 1.02;
+    font-weight: 800; letter-spacing: -0.035em;
+  }
+  .hero h1 .warm {
+    background: linear-gradient(100deg, var(--ember-hot), var(--deep));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lede {
+    margin: 0 auto; max-width: 640px; font-size: clamp(15px, 2vw, 18px); color: var(--ink-dim);
+  }
+  .hero .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 30px; }
+  .btn {
+    padding: 13px 28px; border-radius: 999px; text-decoration: none;
+    font-size: 14px; font-weight: 700; border: 1px solid var(--rule); color: var(--ink);
+  }
+  .btn.primary {
+    border-color: transparent; color: #2a0b05;
+    background: linear-gradient(140deg, var(--ember-hot), var(--ember));
+    box-shadow: 0 5px 26px rgba(255,138,92,0.34);
+  }
+  .btn:hover { border-color: var(--ember); }
+  .btn.primary:hover { filter: brightness(1.09); }
+
+  /* --------------------------------------------------------------- monolith */
+  .monolith { display: flex; justify-content: center; margin: 46px 0 8px; position: relative; z-index: 1; }
+  .monolith svg { width: min(310px, 66vw); height: auto; }
   @media (prefers-reduced-motion: no-preference) {
-    .orb .spin { transform-origin: 50% 50%; animation: turn 38s linear infinite; }
+    .monolith .breathe { animation: breathe 9s ease-in-out infinite; transform-origin: 50% 50%; }
+    .monolith .drift { animation: drift 26s linear infinite; }
   }
-  @keyframes turn { to { transform: rotate(360deg); } }
+  @keyframes breathe { 0%,100% { opacity: 0.92; } 50% { opacity: 1; } }
+  @keyframes drift { to { transform: translateY(-34px); } }
 
-  /* ------------------------------------------------------------------ plates */
-  section { margin-top: 64px; }
-  .plate { position: relative; background: var(--plate); border: 1px solid var(--rule); padding: 30px 24px; }
-  .plate .corner { position: absolute; width: 15px; height: 15px; border-color: var(--accent); border-style: solid; border-width: 0; }
-  .tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; }
-  .tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; }
-  .bl { bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; }
-  .br { bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; }
-
-  h3 { margin: 0 0 6px; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
-  section > p, .plate > p { color: var(--ink-dim); font-weight: 500; }
+  /* ----------------------------------------------------------------- plates */
+  section { margin-top: 82px; scroll-margin-top: 80px; }
+  h2 { margin: 6px 0 12px; font-size: clamp(23px, 3.6vw, 33px); font-weight: 800; letter-spacing: -0.025em; }
+  section > p { color: var(--ink-dim); max-width: 660px; }
   strong { color: var(--ink); font-weight: 700; }
+  em { font-style: normal; color: var(--ember-hot); }
 
-  .grid2 { display: grid; gap: 20px; grid-template-columns: 1fr; }
-  @media (min-width: 760px) { .grid2 { grid-template-columns: 1fr 1fr; } }
+  .plate {
+    position: relative; background: var(--plate); border: 1px solid var(--rule);
+    border-radius: 14px; padding: 26px 22px; backdrop-filter: blur(9px);
+  }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; margin-top: 22px; }
+  @media (min-width: 720px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 900px) { .grid.four { grid-template-columns: repeat(4, 1fr); } }
+  .plate h3 { margin: 8px 0 7px; font-size: 17px; font-weight: 700; }
+  .plate p { margin: 0; font-size: 14px; color: var(--ink-dim); }
 
-  ul { padding-left: 18px; color: var(--ink-dim); font-weight: 500; }
-  li { margin: 7px 0; }
-  li::marker { color: var(--accent); }
+  .step .num {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    letter-spacing: 0.2em; color: var(--ember);
+  }
 
-  code, .code {
-    font-family: var(--mono); background: #060706; border: 1px solid var(--rule);
-    padding: 1px 5px; font-size: 12px; color: var(--ink); word-break: break-all;
+  code {
+    font-family: var(--mono); font-size: 12px; background: rgba(10,4,3,0.7);
+    border: 1px solid var(--rule); border-radius: 5px; padding: 1px 6px; word-break: break-all;
   }
   pre {
-    background: #060706; border: 1px solid var(--rule); padding: 14px;
-    overflow-x: auto; font-size: 12px; margin: 14px 0; line-height: 1.6;
+    font-family: var(--mono); background: rgba(10,4,3,0.75); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 15px; overflow-x: auto; font-size: 12px; line-height: 1.65;
   }
   pre .c { color: var(--ink-faint); }
-  pre .g { color: var(--accent); }
+  pre .g { color: var(--ember-hot); }
 
-  /* -------------------------------------------------------------- memo demo */
-  .field { margin-top: 14px; }
+  ul { padding-left: 19px; color: var(--ink-dim); font-size: 14px; }
+  li { margin: 8px 0; }
+  li::marker { color: var(--ember); }
+
+  /* ------------------------------------------------------------------ demo */
+  .field { margin-top: 13px; }
   .field label { display: block; margin-bottom: 5px; }
   .field input {
-    width: 100%; padding: 10px 12px; background: #060706; color: var(--ink);
-    font-family: var(--mono); font-size: 13px; border: 1px solid var(--rule); outline: none;
+    width: 100%; padding: 11px 13px; border-radius: 8px; background: rgba(10,4,3,0.75);
+    color: var(--ink); font-family: var(--mono); font-size: 13px;
+    border: 1px solid var(--rule); outline: none;
   }
-  .field input:focus { border-color: var(--accent); }
-  .readout { margin-top: 20px; padding: 16px; background: #060706; border: 1px solid var(--rule); }
-  .readout .memo { font-size: 13px; word-break: break-all; line-height: 1.8; }
-  .readout .memo .tag { color: var(--ink-faint); }
-  .readout .memo .id { color: var(--ink); }
-  .readout .memo .bind { color: var(--accent); font-weight: 700; }
-  .verdict { margin-top: 14px; font-size: 13px; font-weight: 600; }
-  .verdict.ok { color: var(--accent); }
+  .field input:focus { border-color: var(--ember); }
+  .readout { margin-top: 19px; padding: 16px; border-radius: 10px; background: rgba(10,4,3,0.75); border: 1px solid var(--rule); }
+  .readout .memo { font-family: var(--mono); font-size: 13px; word-break: break-all; line-height: 1.85; margin: 6px 0 0; }
+  .readout .memo .t { color: var(--ink-faint); }
+  .readout .memo .b { color: var(--ember-hot); font-weight: 700; }
+  .verdict { margin-top: 13px; font-size: 13px; font-weight: 600; }
+  .verdict.ok { color: var(--ember-hot); }
   .verdict.no { color: var(--bad); }
 
-  /* ------------------------------------------------------------------ proof */
-  .tx { display: block; padding: 12px 0; border-bottom: 1px solid rgba(150,170,160,0.1); text-decoration: none; }
-  .tx:last-child { border-bottom: 0; }
-  .tx .what { color: var(--ink); font-size: 13px; font-weight: 600; }
-  .tx .hash { color: var(--ink-faint); font-size: 11px; word-break: break-all; }
-  .tx:hover .hash { color: var(--accent); }
-
-  .cta { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 34px; }
-  .cta a {
-    padding: 12px 22px; border: 1px solid var(--accent); color: var(--accent);
-    text-decoration: none; font-size: 11px; font-weight: 700;
-    letter-spacing: 0.2em; text-transform: uppercase;
+  .uri {
+    display: block; margin-top: 12px; padding: 13px; border-radius: 9px;
+    background: rgba(10,4,3,0.75); border: 1px solid var(--rule);
+    font-family: var(--mono); font-size: 11px; word-break: break-all;
+    color: var(--ink-dim); text-decoration: none; line-height: 1.7;
   }
-  .cta a:hover { background: rgba(126,240,178,0.09); }
-  .cta a.quiet { border-color: var(--rule); color: var(--ink-dim); }
-  .cta a.quiet:hover { border-color: var(--ink-dim); background: transparent; }
+  .uri:hover { border-color: var(--ember); color: var(--ink); }
+  .copy {
+    margin-top: 10px; padding: 9px 18px; border-radius: 999px; cursor: pointer;
+    background: transparent; border: 1px solid var(--rule); color: var(--ink);
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+  }
+  .copy:hover { border-color: var(--ember); }
 
-  footer { margin-top: 74px; padding-top: 22px; border-top: 1px solid var(--rule); }
-  footer p { font-size: 11px; color: var(--ink-faint); font-weight: 500; }
+  .wallets { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+  .wallets span {
+    padding: 6px 13px; border-radius: 999px; border: 1px solid var(--rule);
+    font-size: 13px; color: var(--ink-dim);
+  }
+  .wallets span.partial { opacity: 0.6; }
+
+  .tx { display: block; padding: 13px 0; border-bottom: 1px solid rgba(255,150,110,0.11); text-decoration: none; }
+  .tx:last-child { border-bottom: 0; }
+  .tx .what { color: var(--ink); font-size: 14px; font-weight: 600; }
+  .tx .hash { font-family: var(--mono); color: var(--ink-faint); font-size: 11px; word-break: break-all; }
+  .tx:hover .hash { color: var(--ember); }
+
+  .stat .big {
+    font-size: 30px; font-weight: 800; letter-spacing: -0.02em;
+    background: linear-gradient(100deg, var(--ember-hot), var(--deep));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  footer { margin-top: 84px; padding-top: 24px; border-top: 1px solid var(--rule); }
+  footer p { font-size: 13px; color: var(--ink-faint); }
+  footer a { color: var(--ink-dim); }
 </style>
 </head>
 <body>
 <div class="wrap">
 
-<header class="top">
-  <h2 class="wordmark">BYTE<span>/</span>PROTOCOL</h2>
-  <nav>
-    <a href="#how">How</a>
-    <a href="#try">Try it</a>
+<nav class="top">
+  <a class="brand" href="#top"><span class="mark"></span><span class="name">BYTE</span></a>
+  <div class="links">
+    <a href="#how">Protocol</a>
+    <a href="#pay">Pay</a>
     <a href="#proof">Proof</a>
     <a href="#limits">Limits</a>
-  </nav>
-</header>
+  </div>
+  <a class="launch" href="https://github.com/Afghanistan8/byte-protocol#quickstart" target="_blank" rel="noopener noreferrer">Launch App</a>
+</nav>
 
-<div class="hero">
-  <h2>Agent payments that don't<br>publish <em>who paid whom</em></h2>
-  <p>
-    When two AI agents settle on a public chain, the amount, both balances and the entire
-    counterparty graph are readable by anyone. Byte settles in the shielded Zcash Ironwood
-    pool instead.
+<div class="hero" id="top">
+  <h1>Private payments<br><span class="warm">for AI agents.</span></h1>
+  <p class="lede">
+    Byte is built on Zcash. It gives an agent everything it needs to make and receive
+    private, verifiable payments &mdash; settled in the shielded <strong>Ironwood</strong> pool,
+    where the amount, both addresses and every balance stay off the public ledger.
   </p>
+  <div class="buttons">
+    <a class="btn primary" href="#pay">Pay with your wallet</a>
+    <a class="btn" href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Read the code</a>
+  </div>
 
-  <div class="orb">
-    <svg viewBox="0 0 200 200" role="img" aria-label="Shielded pool">
-      <g class="spin">
-        <circle class="ring" cx="100" cy="100" r="74"/>
-        <ellipse class="ring" cx="100" cy="100" rx="74" ry="26"/>
-        <ellipse class="ring faint" cx="100" cy="100" rx="74" ry="48"/>
-        <ellipse class="ring faint" cx="100" cy="100" rx="26" ry="74"/>
-        <ellipse class="ring" cx="100" cy="100" rx="48" ry="74"/>
+  <div class="monolith">
+    <svg viewBox="0 0 300 470" role="img" aria-label="A shielded value pool">
+      <defs>
+        <!-- Marbled interior, generated rather than drawn, so the slab reads as
+             something with depth rather than a flat shape. -->
+        <filter id="marble" x="-25%" y="-25%" width="150%" height="150%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.011 0.05" numOctaves="4" seed="7" result="n"/>
+          <feDisplacementMap in="SourceGraphic" in2="n" scale="34" xChannelSelector="R" yChannelSelector="G"/>
+          <feGaussianBlur stdDeviation="5"/>
+        </filter>
+        <filter id="glow" x="-70%" y="-45%" width="240%" height="190%">
+          <feGaussianBlur stdDeviation="15" result="b"/>
+          <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#f7a887"/>
+          <stop offset="18%"  stop-color="#e8714e"/>
+          <stop offset="40%"  stop-color="#c8422b"/>
+          <stop offset="62%"  stop-color="#ef8a63"/>
+          <stop offset="82%"  stop-color="#f9c4a6"/>
+          <stop offset="100%" stop-color="#fff2e8"/>
+        </linearGradient>
+        <radialGradient id="halo" cx="50%" cy="56%" r="52%">
+          <stop offset="0%"   stop-color="#ff8a5c" stop-opacity="0.58"/>
+          <stop offset="100%" stop-color="#ff8a5c" stop-opacity="0"/>
+        </radialGradient>
+        <clipPath id="slab">
+          <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
+                   C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"/>
+        </clipPath>
+      </defs>
+
+      <ellipse cx="150" cy="255" rx="148" ry="215" fill="url(#halo)"/>
+
+      <g filter="url(#glow)">
+        <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
+                 C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"
+              fill="url(#body)" class="breathe"/>
       </g>
-      <circle class="core" cx="100" cy="100" r="30"/>
-      <circle class="core" cx="100" cy="100" r="15" opacity="0.4"/>
+
+      <!-- Strata drifting inside the slab: value moving through a pool you cannot see into. -->
+      <g clip-path="url(#slab)" opacity="0.8" filter="url(#marble)">
+        <g class="drift">
+          <rect x="20" y="60"  width="260" height="26" fill="#ffffff" opacity="0.72"/>
+          <rect x="20" y="146" width="260" height="19" fill="#6d1610" opacity="0.8"/>
+          <rect x="20" y="228" width="260" height="30" fill="#ffffff" opacity="0.6"/>
+          <rect x="20" y="318" width="260" height="22" fill="#6d1610" opacity="0.74"/>
+          <rect x="20" y="398" width="260" height="26" fill="#ffffff" opacity="0.66"/>
+          <rect x="20" y="482" width="260" height="20" fill="#6d1610" opacity="0.66"/>
+        </g>
+      </g>
+
+      <path d="M150 12 C 232 12 262 58 262 150 L262 320 C262 412 232 458 150 458
+               C 68 458 38 412 38 320 L38 150 C38 58 68 12 150 12 Z"
+            fill="none" stroke="#fff0e6" stroke-opacity="0.32" stroke-width="1.2"/>
     </svg>
   </div>
-  <p class="label">Amounts · Parties · Balances &mdash; not on chain</p>
+  <p class="label">Amounts &middot; Parties &middot; Balances &mdash; not on chain</p>
 </div>
 
-<!-- ------------------------------------------------------------------- how -->
+<!-- ------------------------------------------------------------------ how -->
 <section id="how">
-  <p class="label"><span class="n">01.</span> How it works</p>
-  <h3>Four steps, no smart contracts</h3>
+  <p class="label"><span class="n">01.</span> The protocol</p>
+  <h2>Invoice, pay, verify, serve</h2>
   <p>
-    Zcash has no contracts and Byte invents none. The guarantees come from two mechanisms:
-    shielded Ironwood transactions, which hide value and participants, and viewing keys plus
-    encrypted memos, which let a payee prove to itself that a specific invoice was paid.
+    Zcash has no smart contracts and Byte invents none. The guarantees come from two
+    mechanisms: shielded Ironwood transactions, which hide value and participants, and
+    viewing keys plus encrypted memos, which let a payee prove to itself that a specific
+    invoice was paid.
   </p>
 
-<pre><span class="c">// 1. the agent asks for something that costs money</span>
-GET /report                              <span class="c">→</span> <span class="g">402</span> + invoice
-
-<span class="c">// 2. the invoice names a FRESH address, used once, never again</span>
-payTo: utest1nmxcdnkh7e2lq4dqzaj22r4j0zzy37lr3y4vtjw…
-memo:  <span class="g">BYTE1</span>|&lt;invoiceId&gt;|&lt;binding&gt;
-
-<span class="c">// 3. the client checks its spend guard, then pays — shielded</span>
-<span class="c">//    an observer sees a transaction happened. nothing else.</span>
-
-<span class="c">// 4. retry with the proof; the payee verifies with a VIEW-ONLY key</span>
-GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class="g">200</span> + the report</pre>
-
-  <div class="grid2" style="margin-top:22px">
-    <div class="plate">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <p class="label">A fresh address per invoice</p>
-      <p>
-        Two payments to the same merchant are not linkable through the address they arrived
-        at. Byte mints a new diversified address every time.
-      </p>
+  <div class="grid four">
+    <div class="plate step">
+      <span class="num">01 / INVOICE</span>
+      <h3>A fresh address</h3>
+      <p>Every invoice mints a new diversified address, used once. Two payments to the same merchant are not linkable through where they arrived.</p>
     </div>
-    <div class="plate">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <p class="label">Verification without spending</p>
-      <p>
-        A facilitator holds a viewing key, never a spending key. Compromise it completely and
-        it still cannot move a zatoshi &mdash; enforced by the type, not by a promise.
-      </p>
+    <div class="plate step">
+      <span class="num">02 / PAY</span>
+      <h3>Shielded, or nothing</h3>
+      <p>The payer's spend guard runs before a transaction is built. A wallet that would have to spend from a transparent source refuses outright.</p>
+    </div>
+    <div class="plate step">
+      <span class="num">03 / VERIFY</span>
+      <h3>Without spending</h3>
+      <p>A viewing key reads the payment; it cannot move funds. Compromise a facilitator completely and it still cannot take a zatoshi.</p>
+    </div>
+    <div class="plate step">
+      <span class="num">04 / SERVE</span>
+      <h3>Exactly once</h3>
+      <p>The invoice is consumed atomically before the resource is served, so the same payment cannot be presented twice.</p>
     </div>
   </div>
+
+<pre style="margin-top:22px"><span class="c">// an agent asks for something that costs money</span>
+GET /report                              <span class="c">→</span> <span class="g">402</span> + invoice
+
+<span class="c">// it pays — shielded. an observer sees a transaction happened, nothing more</span>
+BYTE1|&lt;invoiceId&gt;|&lt;binding&gt;               <span class="c">→</span> <span class="g">ironwood</span>
+
+<span class="c">// it retries with the proof; the payee verifies with a view-only key</span>
+GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class="g">200</span> + the report</pre>
 </section>
 
-<!-- ------------------------------------------------------------------- try -->
-<section id="try">
-  <p class="label"><span class="n">02.</span> Try it</p>
-  <h3>Watch a memo bind a payment</h3>
+<!-- ------------------------------------------------------------------ pay -->
+<section id="pay">
+  <p class="label"><span class="n">02.</span> Any Zcash wallet</p>
+  <h2>Pay a Byte invoice from the wallet you already use</h2>
   <p>
-    Every Byte payment carries a memo committing to the invoice, the amount <em>and</em> the
-    destination, under a key only the payee holds. This runs the real computation
-    &mdash; HMAC-SHA256, in your browser, nothing sent anywhere. <strong>Change the amount and
-    watch the binding break.</strong>
+    There is no wallet-connect standard for Zcash yet &mdash; a ZCG grant to build one was
+    approved in August 2026, with milestones running into <strong>late 2027</strong>. What
+    works today, and what every shielded wallet already implements, is
+    <strong>ZIP&#8209;321</strong>: a payment URI carrying the address, the amount and the memo.
+  </p>
+  <p>
+    Byte emits one with every invoice. Open it and your wallet fills in the payment.
   </p>
 
   <div class="plate" style="margin-top:20px">
-    <span class="corner tl"></span><span class="corner tr"></span>
-    <span class="corner bl"></span><span class="corner br"></span>
+    <p class="label">A real Byte invoice, as a ZIP-321 URI</p>
+    <a class="uri" id="zip321" href="#">&mdash;</a>
+    <button class="copy" id="copy">Copy URI</button>
 
+    <p class="label" style="margin-top:22px">Wallets that support shielded ZEC and ZIP-321</p>
+    <div class="wallets">
+      <span>Zodl</span>
+      <span>YWallet</span>
+      <span>Zingo</span>
+      <span>Zecwallet</span>
+      <span>Ledger</span>
+      <span class="partial">Nighthawk &middot; partial</span>
+      <span class="partial">Zelcore &middot; partial</span>
+    </div>
+    <p style="margin-top:14px; font-size:13px; color: var(--ink-faint)">
+      Zodl is the February 2026 rebrand of Zashi. Ledger added shielded signing in August 2026.
+      Nighthawk and Zelcore handle shielded ZEC in specific setups, but unified-address support
+      is incomplete &mdash; listed as partial rather than supported.
+    </p>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------------- demo -->
+<section id="demo">
+  <p class="label"><span class="n">03.</span> Try it</p>
+  <h2>Watch a memo bind a payment</h2>
+  <p>
+    Every Byte payment carries a memo committing to the invoice, the amount <em>and</em> the
+    destination, under a key only the payee holds. This runs the real computation &mdash;
+    HMAC-SHA256, in your browser, nothing sent anywhere.
+    <strong>Change the amount and watch the binding break.</strong>
+  </p>
+
+  <div class="plate" style="margin-top:20px">
     <div class="field">
       <label class="label" for="m-invoice">Invoice ID</label>
       <input id="m-invoice" value="a4f23e7556fc9566f78673c8ebc52d3d" spellcheck="false">
@@ -264,10 +409,10 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
   </div>
 </section>
 
-<!-- ----------------------------------------------------------------- proof -->
+<!-- ---------------------------------------------------------------- proof -->
 <section id="proof">
-  <p class="label"><span class="n">03.</span> Proof</p>
-  <h3>It runs on a real chain</h3>
+  <p class="label"><span class="n">04.</span> Proof</p>
+  <h2>It runs on a real chain</h2>
   <p>
     Two payments on Zcash testnet, verifiable by anyone. In both, every output &mdash; the
     payment <em>and</em> the change &mdash; landed in Ironwood, so nothing crossed pools and no
@@ -275,7 +420,6 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
   </p>
 
   <div class="plate" style="margin-top:20px">
-    <span class="corner tl"></span><span class="corner br"></span>
     <a class="tx" href="https://testnet.zcashexplorer.app/transactions/15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369" target="_blank" rel="noopener noreferrer">
       <span class="what">The protocol &mdash; block 4,413,018</span><br>
       <span class="hash">15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369</span>
@@ -286,31 +430,28 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
     </a>
   </div>
 
-  <div class="grid2" style="margin-top:20px">
-    <div class="plate">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <p class="label">424 tests</p>
-      <p>368 TypeScript, 56 Rust. Every documented failure has a test, including replays, wrong-pool payments and reorgs.</p>
+  <div class="grid two">
+    <div class="plate stat">
+      <p class="big">424</p>
+      <p>tests passing &mdash; 368 TypeScript, 56 Rust. Every documented failure has one, including replays, wrong-pool payments and reorgs.</p>
     </div>
-    <div class="plate">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <p class="label">Zero protocol fee</p>
-      <p>No fee output, no treasury address. The only cost is the Zcash network fee, which goes to miners.</p>
+    <div class="plate stat">
+      <p class="big">0</p>
+      <p>protocol fee. No fee output, no treasury address. The only cost is the Zcash network fee, which goes to miners.</p>
     </div>
   </div>
 </section>
 
-<!-- ---------------------------------------------------------------- limits -->
+<!-- --------------------------------------------------------------- limits -->
 <section id="limits">
-  <p class="label"><span class="n">04.</span> Limits</p>
-  <h3>What is <em>not</em> hidden</h3>
+  <p class="label"><span class="n">05.</span> Limits</p>
+  <h2>What is <em>not</em> hidden</h2>
   <p>
     A privacy system described only by its guarantees will surprise someone, and the surprise
     is always worse than the limitation.
   </p>
 
   <div class="plate" style="margin-top:20px">
-    <span class="corner tl"></span><span class="corner br"></span>
     <ul>
       <li><strong>That a shielded transaction happened, and when.</strong> Timing correlation is not defeated.</li>
       <li><strong>Any transparent funding rail.</strong> NEAR Intents supports ZEC at transparent addresses only, so every deposit there is public. Byte's largest and least reducible leak.</li>
@@ -320,27 +461,25 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
     </ul>
   </div>
 
-  <div class="plate" style="margin-top:20px">
-    <span class="corner tl"></span><span class="corner br"></span>
+  <div class="plate" style="margin-top:16px">
     <p class="label">Honest status</p>
-    <p>
-      Hackathon-stage, built for the ZECATHON. Not audited. Ironwood-era wallet tooling is
-      young &mdash; librustzcash has never run its shielded-pool test suite with Ironwood as the
-      active pool, and Byte spends from Ironwood. <strong>Do not put mainnet funds behind it.</strong>
+    <p style="margin-top:8px">
+      Byte settles in shielded Zcash and nowhere else. It is not a bridge and wraps nothing.
+      Hackathon-stage, built for the ZECATHON, not audited. Ironwood-era tooling is young
+      &mdash; librustzcash has never run its shielded-pool test suite with Ironwood as the
+      active pool, and Byte spends from Ironwood.
+      <strong>Do not put mainnet funds behind it.</strong>
     </p>
   </div>
 </section>
 
-<div class="cta">
-  <a href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Read the code</a>
-  <a class="quiet" href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">Threat model</a>
-  <a class="quiet" href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/TESTNET_RUNS.md" target="_blank" rel="noopener noreferrer">Testnet runs</a>
-</div>
-
 <footer>
   <p>
-    Byte Protocol &mdash; a privacy layer for AI agent payments, settling in shielded Zcash.
-    MIT licensed. Built for the ZECATHON, September 2026.
+    Byte Protocol &mdash; private, verifiable payments for AI agents, settled in shielded Zcash.
+    MIT licensed. Built for the ZECATHON, September 2026.<br>
+    <a href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Source</a> &middot;
+    <a href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">Threat model</a> &middot;
+    <a href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/TESTNET_RUNS.md" target="_blank" rel="noopener noreferrer">Testnet runs</a>
   </p>
 </footer>
 
@@ -350,26 +489,24 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
 (function () {
   "use strict";
 
-  // The payee's HMAC key. Real deployments read this from the environment and never
-  // publish it; this page uses a fixed demo key so the page is reproducible. Knowing the
-  // key is exactly what lets a payee — and only a payee — recognise its own invoice.
+  // The payee's HMAC key. A real deployment reads this from the environment and never
+  // publishes it; this page uses a fixed demo key so the result is reproducible. Holding
+  // the key is exactly what lets a payee — and only a payee — recognise its own invoice.
   var DEMO_SECRET = new Uint8Array(32).fill(7);
 
-  var els = {
-    invoice: document.getElementById("m-invoice"),
-    amount: document.getElementById("m-amount"),
-    payTo: document.getElementById("m-payto"),
-    out: document.getElementById("m-out"),
-    verdict: document.getElementById("m-verdict")
-  };
-
-  // The binding as issued, so changing a field can be shown to break it.
+  var el = function (id) { return document.getElementById(id); };
   var issued = null;
 
   function hex(buffer) {
     return Array.prototype.map
       .call(new Uint8Array(buffer), function (b) { return b.toString(16).padStart(2, "0"); })
       .join("");
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
   }
 
   /**
@@ -382,29 +519,27 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
    * a different invoice.
    */
   function binding(invoiceId, amount, payTo) {
-    var encoder = new TextEncoder();
-    var preimage = encoder.encode(invoiceId + "\u0000" + amount + "\u0000" + payTo);
-
+    var preimage = new TextEncoder().encode(
+      invoiceId + "\u0000" + amount + "\u0000" + payTo
+    );
     return crypto.subtle
       .importKey("raw", DEMO_SECRET, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
       .then(function (key) { return crypto.subtle.sign("HMAC", key, preimage); })
-      .then(function (signature) { return hex(signature).slice(0, 32); });
+      .then(function (sig) { return hex(sig).slice(0, 32); });
   }
 
   function render() {
-    var invoiceId = els.invoice.value.trim();
-    var amount = els.amount.value.trim();
-    var payTo = els.payTo.value.trim();
+    var invoiceId = el("m-invoice").value.trim();
+    var amount = el("m-amount").value.trim();
+    var payTo = el("m-payto").value.trim();
 
-    binding(invoiceId, amount, payTo).then(function (tag) {
-      els.out.innerHTML =
-        '<span class="tag">BYTE1|</span>' +
-        '<span class="id">' + escapeHtml(invoiceId) + '</span>' +
-        '<span class="tag">|</span>' +
-        '<span class="bind">' + tag + "</span>";
+    return binding(invoiceId, amount, payTo).then(function (tag) {
+      el("m-out").innerHTML =
+        '<span class="t">BYTE1|</span>' + escapeHtml(invoiceId) +
+        '<span class="t">|</span><span class="b">' + tag + "</span>";
 
       if (issued === null) {
-        issued = { invoiceId: invoiceId, amount: amount, payTo: payTo, tag: tag };
+        issued = { invoiceId: invoiceId, amount: amount, payTo: payTo };
       }
 
       var changed = [];
@@ -413,37 +548,58 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">→</span> <span class=
       if (invoiceId !== issued.invoiceId) changed.push("invoice");
 
       if (changed.length === 0) {
-        els.verdict.className = "verdict ok";
-        els.verdict.textContent =
+        el("m-verdict").className = "verdict ok";
+        el("m-verdict").textContent =
           "Verifies. The payee recomputes this from its own key — no database lookup needed.";
       } else {
-        els.verdict.className = "verdict no";
-        els.verdict.textContent =
-          "Rejected: the " + changed.join(" and ") +
-          " changed, so the binding no longer matches the invoice that was issued. " +
-          "This memo cannot be replayed onto it.";
+        el("m-verdict").className = "verdict no";
+        el("m-verdict").textContent =
+          "Rejected: the " + changed.join(" and ") + " changed, so the binding no longer " +
+          "matches the invoice that was issued. This memo cannot be replayed onto it.";
       }
     });
   }
 
-  function escapeHtml(text) {
-    return text.replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  /**
+   * A real ZIP-321 URI, produced by Byte's own builder. The amount is in ZEC (not
+   * zatoshis) and the memo is unpadded base64url of its UTF-8 bytes, both per the standard.
+   */
+  var ZIP321 =
+    "zcash:utest1nmxcdnkh7e2lq4dqzaj22r4j0zzy37lr3y4vtjw23el3t4wte78plujfgkjda2mjy9we4ay4hk3cfeg" +
+    "p0zk29rhx2gs6r0k7f57jzxxx?amount=0.001&memo=QllURTF8YTRmMjNlNzU1NmZjOTU2NmY3ODY3M2M4ZWJjNTJk" +
+    "M2R8ZTYyYmJlZGZhNjE2M2Q2YTAzNmFlZDdjMGJlNDc1ZjI";
+
+  var uri = el("zip321");
+  uri.textContent = ZIP321;
+  uri.href = ZIP321;
+
+  el("copy").addEventListener("click", function () {
+    var button = this;
+    // navigator.clipboard also needs a secure context, so fall back rather than fail
+    // silently the way the crypto path used to.
+    var done = function (ok) {
+      button.textContent = ok ? "Copied" : "Select and copy manually";
+      setTimeout(function () { button.textContent = "Copy URI"; }, 2200);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ZIP321).then(function () { done(true); }, function () { done(false); });
+    } else {
+      done(false);
+    }
+  });
 
   // crypto.subtle exists only in a secure context, so opening this file directly with
-  // file:// leaves it undefined and the demo would sit on a dash forever, looking broken
-  // rather than explaining itself. Over https — or http://127.0.0.1 — it works.
+  // file:// leaves it undefined and the demo would sit on a dash, looking broken rather
+  // than explaining itself. Over https — or http://localhost — it works.
   if (typeof crypto === "undefined" || crypto.subtle === undefined) {
-    els.out.textContent = "BYTE1|" + els.invoice.value + "|………";
-    els.verdict.className = "verdict no";
-    els.verdict.textContent =
+    el("m-out").textContent = "BYTE1|" + el("m-invoice").value + "|………";
+    el("m-verdict").className = "verdict no";
+    el("m-verdict").textContent =
       "This demo needs the Web Crypto API, which browsers only expose over https or " +
       "http://localhost. Opening this page as a local file will not work.";
   } else {
-    ["invoice", "amount", "payTo"].forEach(function (name) {
-      els[name].addEventListener("input", render);
+    ["m-invoice", "m-amount", "m-payto"].forEach(function (id) {
+      el(id).addEventListener("input", render);
     });
     render();
   }
