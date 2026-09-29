@@ -38,18 +38,34 @@ page     : cf8918f31c231522fdaebe6b28b6a36f
 
 ## Deploying
 
-There is a `vercel.json` at the **repository root** pointing `outputDirectory` at `apps/site`,
-so the default Root Directory works — leave Root Directory empty or `.`.
+Configured entirely by the `vercel.json` at the **repository root**. Leave Root Directory
+empty (the repo root) and there is nothing else to set.
 
-A second `vercel.json` lives here, so it also works if Root Directory is set to `apps/site`.
-Either is fine; both skip install and build.
+```json
+"installCommand": "",
+"buildCommand": "rm -rf public && mkdir -p public && cp apps/site/index.html public/index.html",
+"outputDirectory": "public"
+```
 
-Both set `installCommand: ""` and override `buildCommand`. Without that, Vercel would find the
-root `package.json`, run its `build` script, and try to build all twenty-eight workspace
-targets to publish one HTML file.
+### Why it copies into `public/` rather than pointing at `apps/site`
 
-**If you see a 404**, the Root Directory is almost certainly still pointing somewhere else
-from an earlier import. Check Project Settings → Build and Deployment → Root Directory. The
-tell is that the custom response headers below are missing: if `curl -I` shows no
-`Content-Security-Policy`, Vercel never read a `vercel.json` at all, which means it was
-looking in the wrong directory.
+`outputDirectory` is a directory **name**, not a path. Setting it to `apps/site` produced:
+
+```
+Error: No Output Directory named "site" found after the Build completed.
+```
+
+Vercel took the last segment and looked for a top-level `site/`. So the build command copies
+the page into `public/`, which is a real top-level directory and Vercel's own default.
+`public/` is gitignored; it only exists during a build.
+
+`installCommand` is empty and `buildCommand` is overridden because otherwise Vercel finds the
+root `package.json`, runs its `build` script, and builds all twenty-eight workspace targets to
+publish one HTML file.
+
+### If it 404s
+
+Check **Project Settings → Build and Deployment → Root Directory** is empty. The giveaway is
+the response headers: if `curl -I` shows no `Content-Security-Policy`, Vercel never read a
+`vercel.json`, which means it was looking in the wrong directory. A 404 alone could be
+anything; a missing header is specific.
