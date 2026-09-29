@@ -21,8 +21,34 @@ All entries verified **2026-09-29** unless stated otherwise.
 | Memo size | Fixed **512 bytes**, null-padded, ZIP 302 serialization | [zcash_protocol::memo::MemoBytes](https://docs.rs/zcash_protocol/0.10.6/zcash_protocol/memo/struct.MemoBytes.html) |
 | Block target, pre-NU7 | **75 seconds**, unchanged since Blossom (ZIP 208, block 653,600) | [ZIP 208](https://zips.z.cash/zip-0208) |
 | Block target, NU7 onwards | **25 seconds** | [ZIP 218](https://zips.z.cash/zip-0218) |
-| NU7 consensus branch ID | `0x77190AD8` | [librustzcash#3047](https://github.com/zcash/librustzcash/pull/3047) |
-| NU7 schedule | Testnet 6 Oct 2026 · go/no-go 20 Oct · mainnet 5 Nov 2026. Heights are **estimates** until the go/no-go; testnet ≈ 4,386,000, mainnet not yet published | [ebfull, NU7 timeline, 2026-09-17](https://forum.zcashcommunity.com/) |
+| NU6.3 consensus branch ID | `0x37a5165b` | [ZIP 258](https://zips.z.cash/zip-0258); matches `BranchId::Nu6_3` in `zcash_protocol` 0.10.6 |
+| NU7 consensus branch ID | **`0x77190AD9`** | [ZIP 259](https://zips.z.cash/zip-0259) (Draft): `CONSENSUS_BRANCH_ID: 0x77190AD9` |
+| NU7 activation heights | **Unset, on purpose.** ZIP 259 says "Testnet: TBD (To be set on OCT 5)" and "Mainnet: TBD (To be set on OCT 20)". `zcash_protocol` 0.10.6 returns `None` for `NetworkUpgrade::Nu7` on both networks | [ZIP 259](https://zips.z.cash/zip-0259) |
+
+### Two traps in the NU7 branch ID, both of which Byte fell into
+
+**It is `…AD9`, not `…AD8`.** The first published value was `0x77190AD8`; it was corrected,
+and there is a "Fix NU7 consensus branch ID" change in the wild to prove it. ZIP 259 states
+`0x77190AD9`. Byte treats `77190ad8` as *unrecognised*, so a stale server reporting the old
+value gets the safe pre-NU7 spacing rather than silently getting post-NU7 timing.
+
+**`zcash_protocol` 0.10.6 cannot be used as the source.** The version this repo pins still
+carries a `0xffff_ffff` placeholder for `BranchId::Nu7`, so reading the constant out of the
+crate would be reading a placeholder.
+
+### Why spacing is decided by branch and not by height
+
+Byte briefly held a *published estimate* of 4,386,000 for NU7 on testnet and picked spacing
+by comparing against it. That was a live bug: Byte's own testnet run was mined at 4,413,018,
+above the estimate, so every `Retry-After` and confirmation wait on testnet was already
+being computed at 25 seconds for a chain still producing a block every 75 — three times too
+short, weeks before NU7 activates.
+
+`byte-walletd` now reports the `consensusBranchId` the light server states in
+`GetLightdInfo`, and `blockTargetSeconds` reads that. An unrecognised or absent branch falls
+back to 75 seconds, which is the forgiving direction: a client waits longer than it needs to
+rather than hammering a light server three times faster than blocks arrive.
+
 | Mainnet genesis hash | `00040fe8ec8471911baa1db1266ea15dd06b4a8a5c453883c000b031973dce08` | [chainparams.cpp:338](https://github.com/zcash/zcash/blob/master/src/chainparams.cpp) |
 | Testnet genesis hash | `05a60a92d99d85997cce3b87616c089f6124d7342af37106edc76126334a2c38` | [chainparams.cpp:745](https://github.com/zcash/zcash/blob/master/src/chainparams.cpp) |
 

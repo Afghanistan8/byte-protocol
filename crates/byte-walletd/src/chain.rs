@@ -101,6 +101,13 @@ pub struct LightwalletdChain {
     chain_tip: AtomicU32,
     /// Unix seconds of the last successful sync, for liveness reporting.
     last_sync: AtomicU64,
+    /// Consensus branch the light server reports itself to be on, as lowercase hex.
+    ///
+    /// **Read from the chain, never inferred from a height.** Activation heights for NU7
+    /// are TBD in ZIP 259 itself (testnet to be set 5 October 2026, mainnet 20 October), so
+    /// a wallet guessing one is a wallet computing block spacing from fiction. The branch
+    /// ID is a fact the server states.
+    consensus_branch_id: std::sync::Mutex<Option<String>>,
 }
 
 impl LightwalletdChain {
@@ -162,6 +169,7 @@ impl LightwalletdChain {
             synced_height: AtomicU32::new(0),
             chain_tip: AtomicU32::new(0),
             last_sync: AtomicU64::new(0),
+            consensus_branch_id: std::sync::Mutex::new(None),
         })
     }
 
@@ -170,6 +178,19 @@ impl LightwalletdChain {
         let mut client = connect(&self.endpoint).await?;
         let tip = chain_tip(&mut client).await?;
         self.chain_tip.store(tip, Ordering::Relaxed);
+
+        // Ask the server which consensus branch it is on. A failure here is not fatal:
+        // scanning still works, and the TypeScript side falls back to the slower, safer
+        // block spacing when the branch is unknown.
+        if let Ok(info) = lightd_info(&mut client).await {
+            let branch = info.consensus_branch_id.trim().to_lowercase();
+            if !branch.is_empty() {
+                *self
+                    .consensus_branch_id
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(branch);
+            }
+        }
 
         let cache = MemoryBlockCache::new();
         let mut db = open_wallet_db(self.network, &self.wallet_db_path)?;
@@ -212,9 +233,15 @@ impl ChainData for LightwalletdChain {
     fn status(&self) -> Result<SyncStatus, WalletStateError> {
         let synced_height = self.synced_height.load(Ordering::Relaxed);
         let tip = self.chain_tip.load(Ordering::Relaxed);
+        let consensus_branch_id = self
+            .consensus_branch_id
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
         Ok(SyncStatus {
             synced_height,
             chain_tip: (tip > 0).then_some(tip),
+            consensus_branch_id,
             // Treat "within one block of the tip" as synced. Demanding exact equality
             // would flap to false every time a block is found mid-request.
             synced: synced_height > 0 && tip > 0 && synced_height + 1 >= tip,
@@ -352,6 +379,17 @@ async fn chain_tip(
         .into_inner();
     u32::try_from(block.height)
         .map_err(|_| ChainError::Lightwalletd("chain tip height out of range".into()))
+}
+
+/// What the light server says about itself, including its consensus branch.
+async fn lightd_info(
+    client: &mut CompactTxStreamerClient<tonic::transport::Channel>,
+) -> Result<zcash_client_backend::proto::service::LightdInfo, ChainError> {
+    Ok(client
+        .get_lightd_info(zcash_client_backend::proto::service::Empty {})
+        .await
+        .map_err(|e| ChainError::Lightwalletd(e.to_string()))?
+        .into_inner())
 }
 
 async fn birthday_at(

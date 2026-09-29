@@ -51,74 +51,88 @@ export const NU6_3_BRANCH_ID = 0x37a5165b;
 /**
  * Target seconds between blocks, by consensus epoch.
  *
- * **Do not hardcode either of these.** Block spacing is a consensus parameter and it is
- * about to change: ZIP 208 set 75 seconds at Blossom, and ZIP 218 takes it to 25 under
- * NU7. Anything that derives a wait, a timeout or a `Retry-After` from a literal 75 becomes
- * silently wrong — three times too slow — the moment NU7 activates, and it activates on
- * testnet before it activates on mainnet, so the two networks disagree for a month.
+ * **Do not hardcode either of these, and do not pick between them by height.** Block
+ * spacing is a consensus parameter: ZIP 208 set 75 seconds at Blossom, and ZIP 218 takes
+ * it to 25 under NU7. Anything deriving a wait, a timeout or a `Retry-After` from a
+ * literal 75 becomes three times too slow the moment NU7 activates.
  *
- * Read it through {@link blockTargetSeconds}, which takes the height.
+ * Read it through {@link blockTargetSeconds}, which takes the **consensus branch** the
+ * chain is actually on.
  */
 export const BLOCK_TARGET_SECONDS_PRE_NU7 = 75;
 export const BLOCK_TARGET_SECONDS_NU7 = 25;
 
 /**
- * NU7 consensus branch ID.
- *
- * `0x77190AD8`, as exposed by `zcash_protocol`. Unlike the heights below, this is settled.
+ * NU6.3 "Ironwood" consensus branch ID, from ZIP 258. Settled and activated.
  */
-export const NU7_BRANCH_ID = 0x77190ad8;
+export const NU6_3_BRANCH_ID_HEX = "37a5165b";
+
+/**
+ * NU7 consensus branch ID, from ZIP 259: `0x77190AD9`.
+ *
+ * Two traps here, both of which Byte fell into before checking primary sources:
+ *
+ * 1. **It is `…AD9`, not `…AD8`.** The first published value was `0x77190AD8` and it was
+ *    corrected. ZIP 259 states `CONSENSUS_BRANCH_ID: 0x77190AD9`.
+ * 2. **`zcash_protocol` 0.10.6 — the version this repo pins — still carries a
+ *    `0xffff_ffff` placeholder for `BranchId::Nu7`**, so the crate cannot be used as the
+ *    source of this constant either.
+ */
+export const NU7_BRANCH_ID_HEX = "77190ad9";
 
 /**
  * NU7 activation heights.
  *
- * **Neither of these is final, and the mainnet one is deliberately absent.** The schedule
- * is testnet on 6 October 2026, a go/no-go on 20 October, mainnet on 5 November, and the
- * activation height is only fixed at that go/no-go. The testnet figure below is the
- * published *estimate*; the mainnet figure does not exist yet, and inventing one would put
- * a number Byte made up in the path that decides how long a payer waits.
+ * **Both are deliberately `undefined`, and will stay that way until a primary source
+ * publishes them.** ZIP 259 itself records them as "TBD (To be set on OCT 5)" for testnet
+ * and "TBD (To be set on OCT 20)" for mainnet, and `zcash_protocol` 0.10.6 returns `None`
+ * for `NetworkUpgrade::Nu7` on both networks.
  *
- * `undefined` reads as "not activated as far as Byte knows", which falls back to the
- * pre-NU7 spacing — the slower of the two, and therefore the forgiving direction to be
- * wrong in: a client waits longer than it needs to rather than hammering a light server
- * for a block that has not happened.
+ * This table used to hold a published *estimate* of 4,386,000 for testnet, and that was a
+ * live bug: Byte's own testnet run was mined at 4,413,018, above the estimate, so every
+ * `Retry-After` and confirmation wait on testnet was already being computed at 25 seconds
+ * for a chain still producing blocks every 75. Guessing an activation height means
+ * computing real waits from fiction.
  *
- * A deployment that knows better should pass `height` explicitly, or override this once
- * the heights are final. See docs/TOOLCHAIN.md for the dates and sources.
+ * Spacing is decided by {@link blockTargetSeconds} from the consensus branch the light
+ * server reports, which is a fact rather than a forecast.
  */
 export const NU7_ACTIVATION_HEIGHT: Record<ByteNetwork, number | undefined> = {
   [NETWORK_MAINNET]: undefined,
-  /** Estimate, not consensus. Pending the 20 October 2026 go/no-go. */
-  [NETWORK_TESTNET]: 4_386_000,
+  [NETWORK_TESTNET]: undefined,
 };
 
+/** Normalize a branch ID written as hex, with or without `0x`, in any case. */
+export function normalizeBranchId(branchId: string): string {
+  return branchId.trim().toLowerCase().replace(/^0x/, "");
+}
+
 /**
- * Target seconds between blocks on `network` at `height`.
+ * Target seconds between blocks on the consensus branch a chain reports.
  *
- * Without a height this reports the spacing in force *today* on that network, which is
- * what a caller that has no chain connection can honestly say. With one, it reports the
- * spacing that applies at that height.
+ * An unrecognised or absent branch falls back to the **pre-NU7** spacing, and that is the
+ * safe direction: a client waits longer than it needs to rather than hammering a light
+ * server three times faster than blocks arrive.
  */
-export function blockTargetSeconds(network: ByteNetwork, height?: number): number {
-  const nu7 = NU7_ACTIVATION_HEIGHT[network];
-  if (nu7 === undefined) return BLOCK_TARGET_SECONDS_PRE_NU7;
-  if (height === undefined) return BLOCK_TARGET_SECONDS_PRE_NU7;
-  return height >= nu7 ? BLOCK_TARGET_SECONDS_NU7 : BLOCK_TARGET_SECONDS_PRE_NU7;
+export function blockTargetSeconds(branchId?: string): number {
+  if (branchId === undefined) return BLOCK_TARGET_SECONDS_PRE_NU7;
+  return normalizeBranchId(branchId) === NU7_BRANCH_ID_HEX
+    ? BLOCK_TARGET_SECONDS_NU7
+    : BLOCK_TARGET_SECONDS_PRE_NU7;
 }
 
 /**
  * How long to wait before asking again about an unconfirmed payment.
  *
  * One block, floored at ten seconds. The floor matters more after NU7 than before it: at
- * 25-second spacing a client that retries on the nose will mostly catch the same
- * unconfirmed state, and hammering a light server is neither polite nor faster.
+ * 25-second spacing a client retrying on the nose mostly re-reads the same unconfirmed
+ * state, and hammering a light server is neither polite nor faster.
  */
 export function retryAfterSeconds(
-  network: ByteNetwork,
-  options: { height?: number; blocks?: number } = {},
+  options: { branchId?: string; blocks?: number } = {},
 ): number {
   const blocks = options.blocks ?? 1;
-  return Math.max(10, blockTargetSeconds(network, options.height) * blocks);
+  return Math.max(10, blockTargetSeconds(options.branchId) * blocks);
 }
 
 export function isByteNetwork(value: unknown): value is ByteNetwork {

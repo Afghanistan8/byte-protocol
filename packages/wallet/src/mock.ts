@@ -15,6 +15,7 @@ import {
   BYTE_POOL,
   BytePayerError,
   ByteProtocolError,
+  NU6_3_BRANCH_ID_HEX,
   formatZat,
   parseZat,
   sha256Hex,
@@ -309,6 +310,14 @@ export interface MockWalletOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Injectable randomness, so a random delay range is testable. */
   random?: () => number;
+  /**
+   * The consensus branch this mock chain claims to be on.
+   *
+   * Defaults to NU6.3, the branch Ironwood activated on. A test wanting post-NU7 timing
+   * sets it to `NU7_BRANCH_ID_HEX` rather than moving a height, because heights no longer
+   * decide anything.
+   */
+  consensusBranchId?: string;
 }
 
 /**
@@ -324,6 +333,7 @@ export class MockWallet implements ShieldingWallet {
   readonly #minSpendConfirmations: number;
   readonly #sleep: (ms: number) => Promise<void>;
   readonly #random: () => number;
+  readonly #consensusBranchId: string;
   #addressCounter = 0;
   #minted: string[] = [];
 
@@ -335,6 +345,7 @@ export class MockWallet implements ShieldingWallet {
     this.#sleep =
       options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.#random = options.random ?? Math.random;
+    this.#consensusBranchId = options.consensusBranchId ?? NU6_3_BRANCH_ID_HEX;
   }
 
   /**
@@ -381,6 +392,7 @@ export class MockWallet implements ShieldingWallet {
       syncedHeight: this.#chain.height,
       chainTip: this.#chain.height,
       synced: true,
+      consensusBranchId: this.#consensusBranchId,
     };
   }
 

@@ -52,6 +52,15 @@ export interface WalletStatus {
   chainTip?: number;
   /** True once scanning has caught up with the tip. */
   synced: boolean;
+  /**
+   * The consensus branch the chain reports, lowercase hex, when the backend knows it.
+   *
+   * This is what decides block spacing, and therefore every confirmation wait and
+   * `Retry-After` Byte reports. It is read from the chain rather than inferred from a
+   * height because NU7's activation heights are TBD in ZIP 259 itself — a wallet that
+   * guessed one would be computing real waits from a forecast.
+   */
+  consensusBranchId?: string;
 }
 
 /** Balances, split by what can actually be spent right now. */

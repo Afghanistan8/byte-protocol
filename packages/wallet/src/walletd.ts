@@ -217,12 +217,18 @@ export class WalletdWallet implements ShieldingWallet {
       syncedHeight?: unknown;
       chainTip?: unknown;
       synced?: unknown;
+      consensusBranchId?: unknown;
     };
     return {
       network: this.network,
       syncedHeight: typeof response.syncedHeight === "number" ? response.syncedHeight : 0,
       synced: response.synced === true,
       ...(typeof response.chainTip === "number" ? { chainTip: response.chainTip } : {}),
+      // Absent when the sidecar has not yet reached a light server. Callers fall back to
+      // the slower pre-NU7 spacing, which is the forgiving direction to be wrong in.
+      ...(typeof response.consensusBranchId === "string"
+        ? { consensusBranchId: response.consensusBranchId }
+        : {}),
     };
   }
 

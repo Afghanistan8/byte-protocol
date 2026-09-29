@@ -1,13 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NETWORK_TESTNET,
+  NU6_3_BRANCH_ID_HEX,
+  NU7_BRANCH_ID_HEX,
   ByteProtocolError,
   encodeMemo,
   parsePaymentRequirements,
   parseZip321,
 } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
-import { createMockPair, viewOnly } from "@byte-protocol/wallet";
+import { MockChain, MockWallet, createMockPair, viewOnly } from "@byte-protocol/wallet";
 import type { MockPair } from "@byte-protocol/wallet";
 import { InvoiceIssuer } from "./issuer.js";
 import { PaymentVerifier } from "./verifier.js";
@@ -462,5 +464,81 @@ describe("USD-priced invoices", () => {
     const { issuer } = usdIssuer(200);
     const requirements = await issuer.issue("1000000");
     expect(requirements.price).toBeUndefined();
+  });
+});
+
+describe("Retry-After follows the chain's consensus branch", () => {
+  /**
+   * The defect this guards against.
+   *
+   * Spacing used to be chosen by height, against a published *estimate* of 4,386,000 for
+   * NU7 on testnet. Byte's own testnet run was mined at 4,413,018 — above the estimate —
+   * so a pending payment on testnet was already being told to retry in 25 seconds while
+   * the chain was still producing a block every 75. Three times too short, weeks before
+   * NU7 activates.
+   */
+  const TESTNET_HEIGHT_TODAY = 4_414_380;
+
+  function harnessOn(branchId: string) {
+    const chain = new MockChain();
+    const payee = new MockWallet({
+      network: NETWORK_TESTNET,
+      chain,
+      addressPrefix: "utest1payee",
+      consensusBranchId: branchId,
+    });
+    const store = new MemoryInvoiceStore();
+    return {
+      chain,
+      store,
+      issuer: new InvoiceIssuer({ wallet: payee, store, secret: SECRET }),
+      verifier: new PaymentVerifier({ wallet: payee, store, secret: SECRET }),
+    };
+  }
+
+  it("says 75 seconds at today's testnet height, because the branch is still Ironwood", async () => {
+    const h = harnessOn(NU6_3_BRANCH_ID_HEX);
+    h.chain.mine(TESTNET_HEIGHT_TODAY - h.chain.height);
+
+    const invoice = await h.issuer.issue("100000");
+    const result = await h.verifier.verify(invoice.invoiceId, "ab".repeat(32));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.reason).toBe("pending");
+    expect(result.retryAfterSeconds).toBe(75);
+  });
+
+  it("says 25 seconds once the chain reports the NU7 branch", async () => {
+    const h = harnessOn(NU7_BRANCH_ID_HEX);
+
+    const invoice = await h.issuer.issue("100000");
+    const result = await h.verifier.verify(invoice.invoiceId, "ab".repeat(32));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.retryAfterSeconds).toBe(25);
+  });
+
+  it("says 75 seconds when the chain has not reported a branch at all", async () => {
+    const chain = new MockChain();
+    const payee = new MockWallet({ network: NETWORK_TESTNET, chain });
+    // A wallet that cannot say which branch it is on gets the slower, safer answer.
+    vi.spyOn(payee, "status").mockResolvedValue({
+      network: NETWORK_TESTNET,
+      syncedHeight: TESTNET_HEIGHT_TODAY,
+      chainTip: TESTNET_HEIGHT_TODAY,
+      synced: true,
+    });
+
+    const store = new MemoryInvoiceStore();
+    const issuer = new InvoiceIssuer({ wallet: payee, store, secret: SECRET });
+    const verifier = new PaymentVerifier({ wallet: payee, store, secret: SECRET });
+
+    const invoice = await issuer.issue("100000");
+    const result = await verifier.verify(invoice.invoiceId, "ab".repeat(32));
+
+    if (result.ok) throw new Error("unreachable");
+    expect(result.retryAfterSeconds).toBe(75);
   });
 });

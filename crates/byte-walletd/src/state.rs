@@ -76,11 +76,17 @@ pub struct BalanceRecord {
     pub unusable_zat: String,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SyncStatus {
     pub synced_height: u32,
     pub chain_tip: Option<u32>,
     pub synced: bool,
+    /// Consensus branch the light server reports, lowercase hex, when it has said.
+    ///
+    /// This is what decides block spacing on the TypeScript side. Deriving it from a
+    /// height instead would mean guessing an activation height that ZIP 259 records as
+    /// TBD, and getting it wrong makes every confirmation wait three times too short.
+    pub consensus_branch_id: Option<String>,
 }
 
 /// What the sidecar knows about the chain.
@@ -111,6 +117,9 @@ impl ChainData for Unsynced {
             synced_height: 0,
             chain_tip: None,
             synced: false,
+            // An unsynced wallet has never spoken to a light server, so it has nothing to
+            // report here. Absent, rather than a guess.
+            consensus_branch_id: None,
         })
     }
 

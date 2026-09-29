@@ -74,7 +74,13 @@ async function waitForConfirmations(
     // One block, read from the network rather than assumed: 75 seconds under ZIP 208,
     // 25 under NU7's ZIP 218. Polling faster than a block arrives only loads the light
     // server without finding anything new.
-    const wait = retryAfterSeconds(NETWORK_TESTNET) * 1000;
+    // Read from the chain's own consensus branch, never from a height: NU7's activation
+    // heights are TBD in ZIP 259, so a height here would be a forecast driving a real wait.
+    const status = await wallet.status();
+    const wait =
+      retryAfterSeconds(
+        status.consensusBranchId === undefined ? {} : { branchId: status.consensusBranchId },
+      ) * 1000;
     await new Promise((resolve) => setTimeout(resolve, wait));
   }
 

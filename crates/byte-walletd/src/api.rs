@@ -119,6 +119,13 @@ pub struct StatusResponse {
     pub synced: bool,
     /// Height at which NU6.3 activated. Below it the Ironwood pool does not exist.
     pub nu6_3_activation_height: u32,
+    /// Consensus branch the light server reports, lowercase hex, when it has said.
+    ///
+    /// The TypeScript side decides block spacing from this. It is deliberately not derived
+    /// from a height: ZIP 259 records NU7's activation heights as TBD, so any height Byte
+    /// held would be a guess, and a wrong one makes every confirmation wait three times
+    /// too short.
+    pub consensus_branch_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -274,6 +281,7 @@ async fn status(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
         chain_tip: status.chain_tip,
         synced: status.synced,
         nu6_3_activation_height: state.wallet.network().nu6_3_activation_height(),
+        consensus_branch_id: status.consensus_branch_id,
     }))
 }
 

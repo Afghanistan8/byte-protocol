@@ -16,7 +16,6 @@ import {
   retryAfterSeconds,
   timingSafeEqual,
   verifyMemo,
-  type ByteNetwork,
   type InvoiceStore,
   type PaymentReason,
   type StoredInvoice,
@@ -68,8 +67,17 @@ export type VerificationResult = VerificationSuccess | VerificationFailure;
  * Derived per network and height rather than fixed. It used to be a literal 75, which
  * ZIP 218 makes wrong — by a factor of three — the moment NU7 activates.
  */
-function retryAfter(network: ByteNetwork, height?: number): number {
-  return retryAfterSeconds(network, height === undefined ? {} : { height });
+async function retryAfter(wallet: ViewOnlyWallet): Promise<number> {
+  try {
+    const status = await wallet.status();
+    return retryAfterSeconds(
+      status.consensusBranchId === undefined ? {} : { branchId: status.consensusBranchId },
+    );
+  } catch {
+    // A wallet that cannot report its status still gets a usable hint. The pre-NU7
+    // spacing is the slower of the two, so a client waits longer rather than hammering.
+    return retryAfterSeconds();
+  }
 }
 
 function fail(
@@ -124,7 +132,7 @@ export class PaymentVerifier {
       // Not seen is not the same as not paid. The payer may have broadcast a moment ago,
       // or the wallet may be a block behind.
       return fail("pending", "transaction not seen yet", {
-        retryAfterSeconds: retryAfter(this.#wallet.network),
+        retryAfterSeconds: await retryAfter(this.#wallet),
       });
     }
 
@@ -169,9 +177,7 @@ export class PaymentVerifier {
       return fail(
         "pending",
         `${settling.confirmations} of ${invoice.minConfirmations} confirmations`,
-        // The note's own height, when the backend reports one, is the most accurate
-        // thing to date the spacing against.
-        { retryAfterSeconds: retryAfter(this.#wallet.network, settling.height) },
+        { retryAfterSeconds: await retryAfter(this.#wallet) },
       );
     }
 
