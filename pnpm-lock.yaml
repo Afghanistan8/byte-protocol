@@ -179,6 +179,22 @@ importers:
         specifier: ^5.0.2
         version: 5.0.2(@types/node@26.6.3)(vite@8.3.1(@types/node@26.6.3)(esbuild@0.27.7))
 
+  packages/client:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../core
+      '@byte-protocol/wallet':
+        specifier: workspace:*
+        version: link:../wallet
+    devDependencies:
+      '@byte-protocol/server':
+        specifier: workspace:*
+        version: link:../server
+      '@byte-protocol/stores':
+        specifier: workspace:*
+        version: link:../stores
+
   packages/core:
     dependencies:
       '@noble/curves':

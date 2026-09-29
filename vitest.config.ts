@@ -15,6 +15,7 @@ export default defineConfig({
       "@byte-protocol/wallet": src("wallet"),
       "@byte-protocol/stores": src("stores"),
       "@byte-protocol/server": src("server"),
+      "@byte-protocol/client": src("client"),
     },
   },
   test: {
