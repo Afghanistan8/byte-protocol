@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --build --force",
     "clean": "pnpm -r exec rm -rf dist",
-    "demo": "pnpm --filter @byte-protocol/example-agent-marketplace demo"
+    "demo": "pnpm --filter @byte-protocol/example-agent-marketplace demo",
+    "console": "pnpm --filter @byte-protocol/example-agent-marketplace console"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

@@ -6,14 +6,16 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "demo": "tsx src/demo.ts"
+    "demo": "tsx src/demo.ts",
+    "console": "tsx src/console-demo.ts"
   },
   "dependencies": {
     "@byte-protocol/client": "workspace:*",
     "@byte-protocol/core": "workspace:*",
     "@byte-protocol/server": "workspace:*",
     "@byte-protocol/stores": "workspace:*",
-    "@byte-protocol/wallet": "workspace:*"
+    "@byte-protocol/wallet": "workspace:*",
+    "@byte-protocol/console": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.20.6"

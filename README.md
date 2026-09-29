@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**389 tests pass**: 333 TypeScript, 56 Rust.
+**408 tests pass**: 352 TypeScript, 56 Rust.
 
 ---
 
@@ -131,11 +131,12 @@ Implemented and tested:
 | `@byte-protocol/adapter-langchain` | LangChain tools: fetch paid resources, check balance, review spending |
 | `@byte-protocol/rails` | The funding rail interface; every rail must declare whether its Zcash leg is public |
 | `@byte-protocol/rail-near-intents` | Fund from another chain via NEAR Intents, dry-run. **The Zcash leg is transparent and public.** |
+| `@byte-protocol/console` | The owner-only JSON API and the Byte console |
 | `crates/byte-walletd` | The Rust sidecar on librustzcash: addresses, sync, send, verify |
 
-**Planned, and not claimed to work:** a Redis store; the owner-only JSON API and its console;
-every other funding rail, each named with its reason in [RAILS.md](docs/RAILS.md). Nothing
-above is listed as supported without code and a passing test behind it.
+**Planned, and not claimed to work:** a Redis store, and every other funding rail — each named
+with its reason in [RAILS.md](docs/RAILS.md). Nothing above is listed as supported without
+code and a passing test behind it.
 
 ---
 
@@ -201,6 +202,17 @@ pnpm demo
 A buyer agent pays a seller agent for a report, then the demo shows the parts that usually go
 unshown: the pool the payment landed in, a replay being refused, and a spend guard stopping a
 payment before any value moves.
+
+For the console:
+
+```bash
+pnpm console
+```
+
+It serves an owner-only page reporting invoices, settlements, balances and the spend guard's
+decisions — refusals included, with their reasons. It renders nothing before its token is
+accepted, and loads nothing from anywhere else: a page reporting on a privacy protocol should
+not be fetching scripts from third parties who would then see every operator who opens it.
 
 For the sidecar and a real testnet payment, see
 [crates/byte-walletd/.env.example](crates/byte-walletd/.env.example) and

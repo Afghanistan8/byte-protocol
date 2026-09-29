@@ -22,6 +22,7 @@ export default defineConfig({
       "@byte-protocol/adapter-mcp": fileURLToPath(new URL("./packages/adapters/mcp/src/index.ts", import.meta.url)),
       "@byte-protocol/adapter-a2a-ap2": fileURLToPath(new URL("./packages/adapters/a2a-ap2/src/index.ts", import.meta.url)),
       "@byte-protocol/adapter-langchain": fileURLToPath(new URL("./packages/adapters/langchain/src/index.ts", import.meta.url)),
+      "@byte-protocol/console": src("console"),
       "@byte-protocol/rails": fileURLToPath(new URL("./packages/rails/interface/src/index.ts", import.meta.url)),
       "@byte-protocol/rail-near-intents": fileURLToPath(new URL("./packages/rails/near-intents/src/index.ts", import.meta.url)),
     },

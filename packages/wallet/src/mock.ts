@@ -296,12 +296,29 @@ export class MockWallet implements SpendingWallet {
     };
   }
 
+  /**
+   * Balance across every address this wallet controls.
+   *
+   * Not just the funding address: invoice addresses are where a payee's money actually
+   * arrives, and a wallet that ignored them would report a merchant as empty no matter how
+   * much it had been paid. A real wallet reports the whole account, and so does this.
+   */
   async balance(): Promise<WalletBalance> {
-    const address = this.fundingAddress;
+    const addresses = [this.fundingAddress, ...this.#minted];
+    let spendable = 0n;
+    let pending = 0n;
+    let unusable = 0n;
+
+    for (const address of addresses) {
+      spendable += this.#chain.spendableAt(address, this.#minSpendConfirmations);
+      pending += this.#chain.pendingAt(address, this.#minSpendConfirmations);
+      unusable += this.#chain.unusableAt(address);
+    }
+
     return {
-      spendableZat: formatZat(this.#chain.spendableAt(address, this.#minSpendConfirmations)),
-      pendingZat: formatZat(this.#chain.pendingAt(address, this.#minSpendConfirmations)),
-      unusableZat: formatZat(this.#chain.unusableAt(address)),
+      spendableZat: formatZat(spendable),
+      pendingZat: formatZat(pending),
+      unusableZat: formatZat(unusable),
     };
   }
 

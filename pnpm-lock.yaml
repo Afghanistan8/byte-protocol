@@ -184,6 +184,9 @@ importers:
       '@byte-protocol/client':
         specifier: workspace:*
         version: link:../../packages/client
+      '@byte-protocol/console':
+        specifier: workspace:*
+        version: link:../../packages/console
       '@byte-protocol/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -292,6 +295,22 @@ importers:
       '@byte-protocol/server':
         specifier: workspace:*
         version: link:../server
+      '@byte-protocol/stores':
+        specifier: workspace:*
+        version: link:../stores
+
+  packages/console:
+    dependencies:
+      '@byte-protocol/client':
+        specifier: workspace:*
+        version: link:../client
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../core
+      '@byte-protocol/wallet':
+        specifier: workspace:*
+        version: link:../wallet
+    devDependencies:
       '@byte-protocol/stores':
         specifier: workspace:*
         version: link:../stores

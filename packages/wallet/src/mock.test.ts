@@ -223,3 +223,27 @@ describe("view-only wallets", () => {
     expect((await view.status()).synced).toBe(true);
   });
 });
+
+describe("balance covers the whole account", () => {
+  it("counts payments received at invoice addresses, not only the funding address", async () => {
+    // A payee's money arrives at invoice addresses. A wallet that ignored them would report
+    // a merchant as empty no matter how much it had been paid.
+    const pair = createMockPair(NETWORK_TESTNET);
+    const payTo = await pair.payee.newInvoiceAddress();
+    pair.chain.payInto({ payTo, amountZat: "250000", memo: "m" });
+    pair.chain.mine(1);
+
+    expect((await pair.payee.balance()).spendableZat).toBe("250000");
+  });
+
+  it("sums across several invoice addresses", async () => {
+    const pair = createMockPair(NETWORK_TESTNET);
+    for (const amount of ["100000", "250000", "75000"]) {
+      const payTo = await pair.payee.newInvoiceAddress();
+      pair.chain.payInto({ payTo, amountZat: amount, memo: "m" });
+    }
+    pair.chain.mine(1);
+
+    expect((await pair.payee.balance()).spendableZat).toBe("425000");
+  });
+});
