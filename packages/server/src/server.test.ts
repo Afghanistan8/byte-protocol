@@ -1,0 +1,337 @@
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  NETWORK_TESTNET,
+  ByteProtocolError,
+  encodeMemo,
+  parsePaymentRequirements,
+  parseZip321,
+} from "@byte-protocol/core";
+import { MemoryInvoiceStore } from "@byte-protocol/stores";
+import { createMockPair, viewOnly } from "@byte-protocol/wallet";
+import type { MockPair } from "@byte-protocol/wallet";
+import { InvoiceIssuer } from "./issuer.js";
+import { PaymentVerifier } from "./verifier.js";
+
+const SECRET = new Uint8Array(32).fill(11);
+const OTHER_SECRET = new Uint8Array(32).fill(22);
+
+interface Harness {
+  pair: MockPair;
+  store: MemoryInvoiceStore;
+  issuer: InvoiceIssuer;
+  verifier: PaymentVerifier;
+  now: () => number;
+  setNow: (t: number) => void;
+}
+
+function harness(options: { minConfirmations?: number; ttlMs?: number } = {}): Harness {
+  const pair = createMockPair(NETWORK_TESTNET);
+  const store = new MemoryInvoiceStore();
+  let clock = 1_000_000;
+  const now = () => clock;
+
+  const wallet = viewOnly(pair.payee);
+  const issuer = new InvoiceIssuer({
+    wallet,
+    store,
+    secret: SECRET,
+    now,
+    ...(options.minConfirmations !== undefined
+      ? { minConfirmations: options.minConfirmations }
+      : {}),
+    ...(options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {}),
+  });
+  const verifier = new PaymentVerifier({ wallet, store, secret: SECRET, now });
+
+  pair.fundPayer("100000000");
+  return { pair, store, issuer, verifier, now, setNow: (t) => (clock = t) };
+}
+
+/** Pay an invoice exactly as a well-behaved client would, and mine it. */
+async function pay(
+  h: Harness,
+  invoice: { payTo: string; amount: string; memo: string },
+  overrides: { amountZat?: string; memo?: string; confirmations?: number } = {},
+): Promise<string> {
+  const { txid } = await h.pair.payer.send({
+    to: invoice.payTo,
+    amountZat: overrides.amountZat ?? invoice.amount,
+    memo: overrides.memo ?? invoice.memo,
+  });
+  h.pair.chain.mine(overrides.confirmations ?? 1);
+  return txid;
+}
+
+describe("InvoiceIssuer", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = harness();
+  });
+
+  it("issues requirements that validate against the schema", async () => {
+    const invoice = await h.issuer.issue("100000");
+    expect(() => parsePaymentRequirements(invoice)).not.toThrow();
+    expect(invoice.scheme).toBe("byte-zcash-shielded-v1");
+    expect(invoice.asset).toBe("ZEC");
+    expect(invoice.amount).toBe("100000");
+  });
+
+  it("mints a fresh address for every invoice", async () => {
+    // Two invoices sharing an address would be linkable on-chain.
+    const addresses = new Set<string>();
+    for (let n = 0; n < 50; n++) addresses.add((await h.issuer.issue("1000")).payTo);
+    expect(addresses.size).toBe(50);
+  });
+
+  it("records the invoice before returning it", async () => {
+    // Otherwise a payer could hold an invoice the payee has no record of.
+    const invoice = await h.issuer.issue("100000");
+    expect(await h.store.get(invoice.invoiceId)).toBeDefined();
+  });
+
+  it("emits a ZIP-321 URI encoding the same payment", async () => {
+    const invoice = await h.issuer.issue("250000");
+    const parsed = parseZip321(invoice.zip321);
+    expect(parsed.address).toBe(invoice.payTo);
+    expect(parsed.amountZat).toBe("250000");
+    expect(parsed.memo).toBe(invoice.memo);
+  });
+
+  it("sets an expiry from the configured ttl", async () => {
+    const withTtl = harness({ ttlMs: 60_000 });
+    const invoice = await withTtl.issuer.issue("1000");
+    expect(Date.parse(invoice.expiresAt)).toBe(withTtl.now() + 60_000);
+  });
+
+  it("rejects a malformed or zero amount", async () => {
+    for (const bad of ["", "0", "-1", "1.5", "abc", "01"]) {
+      await expect(h.issuer.issue(bad)).rejects.toThrow(ByteProtocolError);
+    }
+  });
+
+  it("refuses to start with a short secret or nonsensical settings", () => {
+    const wallet = viewOnly(h.pair.payee);
+    const store = new MemoryInvoiceStore();
+    expect(() => new InvoiceIssuer({ wallet, store, secret: new Uint8Array(31) })).toThrow();
+    expect(
+      () => new InvoiceIssuer({ wallet, store, secret: SECRET, ttlMs: 0 }),
+    ).toThrow();
+    expect(
+      () => new InvoiceIssuer({ wallet, store, secret: SECRET, minConfirmations: -1 }),
+    ).toThrow();
+  });
+});
+
+describe("PaymentVerifier — the happy path", () => {
+  it("accepts a correctly paid invoice and consumes it", async () => {
+    const h = harness();
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.note.pool).toBe("ironwood");
+    expect(result.note.valueZat).toBe("100000");
+    expect(result.txid).toBe(txid);
+    expect(result.invoice.consumedAt).toBeDefined();
+  });
+
+  it("accepts an overpayment and keeps the surplus", async () => {
+    // Refunding would mean sending value back to a payer Byte deliberately cannot
+    // identify. Documented in SPEC section 8 and SECURITY section 5.2.
+    const h = harness();
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice, { amountZat: "150000" });
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.note.valueZat).toBe("150000");
+  });
+});
+
+describe("PaymentVerifier — every documented failure", () => {
+  let h: Harness;
+  beforeEach(() => {
+    h = harness();
+  });
+
+  it("reports underpaid with the shortfall", async () => {
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice, { amountZat: "40000" });
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result).toMatchObject({ ok: false, reason: "underpaid", shortfallZat: "60000" });
+  });
+
+  it("reports expired once the deadline passes", async () => {
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+    h.setNow(h.now() + 10 * 60 * 1000);
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result).toMatchObject({ ok: false, reason: "expired" });
+  });
+
+  it("reports pending when the transaction has not been seen", async () => {
+    const invoice = await h.issuer.issue("100000");
+    const result = await h.verifier.verify(invoice.invoiceId, "f".repeat(64));
+    expect(result).toMatchObject({ ok: false, reason: "pending" });
+    if (!result.ok) expect(result.retryAfterSeconds).toBeGreaterThan(0);
+  });
+
+  it("reports pending when there are too few confirmations", async () => {
+    const strict = harness({ minConfirmations: 3 });
+    const invoice = await strict.issuer.issue("100000");
+    const txid = await pay(strict, invoice, { confirmations: 1 });
+
+    const first = await strict.verifier.verify(invoice.invoiceId, txid);
+    expect(first).toMatchObject({ ok: false, reason: "pending" });
+
+    strict.pair.chain.mine(2);
+    const second = await strict.verifier.verify(invoice.invoiceId, txid);
+    expect(second.ok).toBe(true);
+  });
+
+  it("reports replay on a second claim", async () => {
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+
+    expect((await h.verifier.verify(invoice.invoiceId, txid)).ok).toBe(true);
+    expect(await h.verifier.verify(invoice.invoiceId, txid)).toMatchObject({
+      ok: false,
+      reason: "replay",
+    });
+  });
+
+  it("lets exactly one of many concurrent claims win", async () => {
+    // The replay defence under contention, through the whole verifier rather than the
+    // store alone.
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+
+    const results = await Promise.all(
+      Array.from({ length: 50 }, () => h.verifier.verify(invoice.invoiceId, txid)),
+    );
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+  });
+
+  it("reports invalid_payment for a payment in the wrong pool", async () => {
+    const invoice = await h.issuer.issue("100000");
+    // Same amount, same memo, wrong pool. Only the pool differs.
+    const txid = h.pair.chain.payInto({
+      payTo: invoice.payTo,
+      amountZat: "100000",
+      memo: invoice.memo,
+      pool: "orchard",
+    });
+    h.pair.chain.mine(1);
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result).toMatchObject({ ok: false, reason: "invalid_payment" });
+    if (!result.ok) expect(result.message).toContain("orchard");
+  });
+
+  it("reports invalid_payment for a payment carrying no memo", async () => {
+    const invoice = await h.issuer.issue("100000");
+    const txid = h.pair.chain.payInto({ payTo: invoice.payTo, amountZat: "100000" });
+    h.pair.chain.mine(1);
+
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+    expect(result).toMatchObject({ ok: false, reason: "invalid_payment" });
+    if (!result.ok) expect(result.message).toContain("no memo");
+  });
+
+  it("rejects a memo minted under a different secret", async () => {
+    // A third party who can see an invoice must not be able to mint a memo this verifier
+    // would accept.
+    const invoice = await h.issuer.issue("100000");
+    const forged = encodeMemo(OTHER_SECRET, {
+      invoiceId: invoice.invoiceId,
+      amountZat: invoice.amount,
+      payTo: invoice.payTo,
+    });
+    const txid = await pay(h, invoice, { memo: forged });
+
+    expect(await h.verifier.verify(invoice.invoiceId, txid)).toMatchObject({
+      ok: false,
+      reason: "invalid_payment",
+    });
+  });
+
+  it("rejects a memo from one invoice presented against another", async () => {
+    const a = await h.issuer.issue("100000");
+    const b = await h.issuer.issue("100000");
+    const txid = await pay(h, { ...b, memo: a.memo });
+
+    expect(await h.verifier.verify(b.invoiceId, txid)).toMatchObject({
+      ok: false,
+      reason: "invalid_payment",
+    });
+  });
+
+  it("reports invalid_payment for an unknown invoice", async () => {
+    expect(await h.verifier.verify("0".repeat(32), "a".repeat(64))).toMatchObject({
+      ok: false,
+      reason: "invalid_payment",
+    });
+  });
+
+  it("reports pending after a reorg drops the paying transaction", async () => {
+    // Serving at zero confirmations means this can happen after delivery. The verifier's
+    // job is to stop reporting success once the payment is gone.
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+    h.pair.chain.drop(txid);
+
+    expect(await h.verifier.verify(invoice.invoiceId, txid)).toMatchObject({
+      ok: false,
+      reason: "pending",
+    });
+  });
+});
+
+describe("the verifier does not leak", () => {
+  it("does not consume an invoice that failed verification", async () => {
+    const h = harness();
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice, { amountZat: "1" });
+
+    expect((await h.verifier.verify(invoice.invoiceId, txid)).ok).toBe(false);
+    // The invoice must remain payable: an underpayment is not a spent invoice.
+    expect((await h.store.get(invoice.invoiceId))?.consumedAt).toBeUndefined();
+
+    const topUp = await pay(h, invoice);
+    expect((await h.verifier.verify(invoice.invoiceId, topUp)).ok).toBe(true);
+  });
+
+  it("checks cheap local conditions before touching the wallet", async () => {
+    // A flood of replayed or expired claims must not be usable to hammer the chain data
+    // source. Verified by counting wallet calls.
+    const h = harness();
+    const invoice = await h.issuer.issue("100000");
+    const txid = await pay(h, invoice);
+    await h.verifier.verify(invoice.invoiceId, txid);
+
+    let calls = 0;
+    const counting = new PaymentVerifier({
+      wallet: {
+        network: h.pair.payee.network,
+        newInvoiceAddress: () => h.pair.payee.newInvoiceAddress(),
+        findOutputs: async (t) => {
+          calls += 1;
+          return h.pair.payee.findOutputs(t);
+        },
+        status: () => h.pair.payee.status(),
+        balance: () => h.pair.payee.balance(),
+      },
+      store: h.store,
+      secret: SECRET,
+      now: h.now,
+    });
+
+    await counting.verify(invoice.invoiceId, txid);
+    expect(calls).toBe(0);
+  });
+});

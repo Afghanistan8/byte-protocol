@@ -39,17 +39,20 @@ export interface ViewOnlyWallet {
   newInvoiceAddress(): Promise<string>;
 
   /**
-   * Notes received at `payTo`.
+   * Every output this wallet received in the given transaction.
    *
-   * Returns every note found, including ones in pools Byte will not accept. Filtering is
+   * Keyed by transaction because that is what the payer reports in its payment payload
+   * (docs/SPEC.md section 5.3) and what the underlying wallet API offers.
+   *
+   * Returns every output found, including ones in pools Byte will not accept. Filtering is
    * the verifier's job: a payment that arrived in the wrong pool must be reported as
    * `invalid_payment`, not silently hidden, or an operator has no way to see what went
    * wrong.
+   *
+   * An empty array means the wallet received nothing in that transaction — which includes
+   * the case where it has never heard of the transaction at all.
    */
-  findReceived(payTo: string): Promise<ReceivedNote[]>;
-
-  /** A single note by transaction, when the payer has told us the txid. */
-  findByTxid(txid: string, payTo: string): Promise<ReceivedNote | undefined>;
+  findOutputs(txid: string): Promise<ReceivedNote[]>;
 
   status(): Promise<WalletStatus>;
 

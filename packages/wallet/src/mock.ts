@@ -142,9 +142,11 @@ export class MockChain {
       .reverse();
   }
 
-  noteByTxid(txid: string, payTo: string): ReceivedNote | undefined {
-    const note = this.#notes.find((n) => n.txid === txid && n.payTo === payTo && !n.dropped);
-    return note ? this.#toReceived(note) : undefined;
+  /** Every live note in a transaction, in output order. */
+  notesForTxid(txid: string): ReceivedNote[] {
+    return this.#notes
+      .filter((n) => n.txid === txid && !n.dropped)
+      .map((n) => this.#toReceived(n));
   }
 
   /** Spendable Ironwood value at an address, at or above `minConfirmations`. */
@@ -273,12 +275,16 @@ export class MockWallet implements SpendingWallet {
     return address;
   }
 
-  async findReceived(payTo: string): Promise<ReceivedNote[]> {
-    return this.#chain.notesFor(payTo);
+  async findOutputs(txid: string): Promise<ReceivedNote[]> {
+    return this.#chain.notesForTxid(txid);
   }
 
-  async findByTxid(txid: string, payTo: string): Promise<ReceivedNote | undefined> {
-    return this.#chain.noteByTxid(txid, payTo);
+  /**
+   * Notes at an address. Mock-only: the real backend cannot answer this, so it is not on
+   * the `ViewOnlyWallet` interface. Used by tests to set up and inspect fixtures.
+   */
+  async notesAt(payTo: string): Promise<ReceivedNote[]> {
+    return this.#chain.notesFor(payTo);
   }
 
   async status(): Promise<WalletStatus> {
@@ -343,8 +349,7 @@ export function viewOnly(wallet: SpendingWallet): ViewOnlyWallet {
   return {
     network: wallet.network,
     newInvoiceAddress: () => wallet.newInvoiceAddress(),
-    findReceived: (payTo) => wallet.findReceived(payTo),
-    findByTxid: (txid, payTo) => wallet.findByTxid(txid, payTo),
+    findOutputs: (txid) => wallet.findOutputs(txid),
     status: () => wallet.status(),
     balance: () => wallet.balance(),
   };
