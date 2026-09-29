@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Byte — Dashboard</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='30' y='14' width='40' height='72' rx='20' fill='%23ff9a6a'/></svg>">
+<style>
+  :root {
+    --void: #0a0503;
+    --panel: rgba(38, 15, 11, 0.6);
+    --panel-solid: #1c0b08;
+    --rule: rgba(255, 150, 110, 0.2);
+    --ink: #fdeee6;
+    --ink-dim: #d4a897;
+    --ink-faint: #9a6b5c;
+    --ember: #ff8a5c;
+    --ember-hot: #ffb38a;
+    --deep: #c2412c;
+    --ok: #7fe3a8;
+    --bad: #ff6b6b;
+    --warn: #ffc978;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Helvetica Neue", Inter, system-ui, -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased; min-height: 100vh;
+    background:
+      radial-gradient(ellipse 100% 60% at 18% 0%, #4a1812 0%, transparent 58%),
+      linear-gradient(180deg, #140705 0%, #1e0a07 100%);
+    background-attachment: fixed;
+  }
+  a { color: inherit; }
+
+  .shell { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+  @media (min-width: 860px) { .shell { grid-template-columns: 236px 1fr; } }
+
+  /* ---------------------------------------------------------------- sidebar */
+  aside {
+    border-right: 1px solid var(--rule); padding: 20px 16px;
+    display: flex; flex-direction: column; gap: 26px;
+  }
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+  .brand .mark {
+    width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto;
+    background: linear-gradient(160deg, var(--ember-hot), var(--deep));
+    box-shadow: 0 0 20px rgba(255,138,92,0.45);
+  }
+  .brand .name { font-family: var(--mono); font-size: 14px; font-weight: 700; letter-spacing: 0.26em; }
+
+  nav.side { display: flex; flex-direction: column; gap: 3px; }
+  nav.side button {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 10px 13px; border-radius: 9px; cursor: pointer;
+    background: transparent; border: 1px solid transparent;
+    color: var(--ink-dim); font-family: var(--sans); font-size: 14px;
+    font-weight: 600; text-align: left;
+  }
+  nav.side button:hover { color: var(--ink); background: rgba(255,138,92,0.07); }
+  nav.side button.on {
+    color: var(--ember-hot); background: rgba(255,138,92,0.12); border-color: var(--rule);
+  }
+  nav.side .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+
+  aside .foot { margin-top: auto; }
+  aside .foot a { font-size: 12px; color: var(--ink-faint); text-decoration: none; display: block; margin: 5px 0; }
+  aside .foot a:hover { color: var(--ember); }
+
+  /* ------------------------------------------------------------------- main */
+  main { padding: 22px 20px 70px; max-width: 1080px; }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin-bottom: 22px;
+  }
+  h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); font-weight: 800; letter-spacing: -0.025em; }
+  h2 { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+
+  .btn {
+    padding: 10px 20px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    font-family: var(--sans); font-size: 14px; font-weight: 700;
+    border: 1px solid transparent; color: #2a0b05;
+    background: linear-gradient(140deg, var(--ember-hot), var(--ember));
+    box-shadow: 0 5px 22px rgba(255,138,92,0.34);
+  }
+  .btn:hover { filter: brightness(1.09); }
+  .btn.ghost {
+    background: transparent; color: var(--ink); border-color: var(--rule); box-shadow: none;
+  }
+  .btn.ghost:hover { border-color: var(--ember); filter: none; }
+  .btn.small { padding: 7px 15px; font-size: 13px; }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+
+  .banner {
+    padding: 14px 17px; border-radius: 11px; margin-bottom: 20px;
+    border: 1px solid var(--rule); background: rgba(255,138,92,0.09);
+    color: var(--ink-dim); font-size: 14px;
+  }
+  .banner strong { color: var(--ember-hot); }
+
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .card {
+    padding: 18px; border-radius: 12px; border: 1px solid var(--rule);
+    background: var(--panel); backdrop-filter: blur(8px);
+  }
+  .card .k {
+    font-family: var(--mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .card .v { font-size: 27px; font-weight: 800; letter-spacing: -0.02em; margin: 7px 0 3px; }
+  .card .v.muted { color: var(--ink-faint); font-weight: 600; font-size: 22px; }
+  .card .s { font-size: 12px; color: var(--ink-faint); }
+
+  .panel {
+    margin-top: 20px; border-radius: 12px; border: 1px solid var(--rule);
+    background: var(--panel); backdrop-filter: blur(8px); overflow: hidden;
+  }
+  .panel > header {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 15px 18px; border-bottom: 1px solid var(--rule); flex-wrap: wrap;
+  }
+  .panel > .body { padding: 18px; }
+  .panel p { color: var(--ink-dim); font-size: 14px; }
+  .panel p:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th {
+    text-align: left; padding: 11px 18px; font-family: var(--mono); font-size: 10px;
+    font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--ink-faint); border-bottom: 1px solid var(--rule);
+  }
+  td { padding: 13px 18px; border-bottom: 1px solid rgba(255,150,110,0.08); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; border: 1px solid currentColor; white-space: nowrap;
+  }
+  .tag.ok { color: var(--ok); }
+  .tag.no { color: var(--ink-faint); }
+  .tag.warn { color: var(--warn); }
+  .tag.hot { color: var(--ember-hot); }
+
+  code, .mono { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+  .muted { color: var(--ink-faint); }
+
+  input[type="text"], input[type="password"], input[type="url"] {
+    width: 100%; padding: 10px 13px; border-radius: 9px;
+    background: rgba(10,4,3,0.7); color: var(--ink);
+    font-family: var(--mono); font-size: 13px; border: 1px solid var(--rule); outline: none;
+  }
+  input:focus { border-color: var(--ember); }
+  label.lab {
+    display: block; margin: 13px 0 5px; font-family: var(--mono); font-size: 10px;
+    font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  /* ----------------------------------------------------------------- modal */
+  .scrim {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    align-items: center; justify-content: center; padding: 18px;
+    background: rgba(6,2,2,0.78); backdrop-filter: blur(5px);
+  }
+  .scrim.on { display: flex; }
+  .modal {
+    width: 100%; max-width: 520px; max-height: 88vh; overflow-y: auto;
+    border-radius: 15px; border: 1px solid var(--rule); background: var(--panel-solid);
+  }
+  .modal header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 17px 20px; border-bottom: 1px solid var(--rule);
+  }
+  .modal .body { padding: 20px; }
+  .modal .x { background: none; border: 0; color: var(--ink-faint); font-size: 21px; cursor: pointer; }
+  .modal .x:hover { color: var(--ink); }
+
+  .option {
+    width: 100%; text-align: left; padding: 15px; margin-bottom: 11px; border-radius: 11px;
+    background: rgba(255,138,92,0.05); border: 1px solid var(--rule);
+    color: var(--ink); cursor: pointer; font-family: var(--sans); font-size: 14px;
+  }
+  .option:hover:not(:disabled) { border-color: var(--ember); background: rgba(255,138,92,0.1); }
+  .option:disabled { opacity: 0.42; cursor: not-allowed; }
+  .option .t { font-weight: 700; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .option .d { font-size: 13px; color: var(--ink-dim); margin-top: 5px; }
+
+  .note {
+    padding: 13px 15px; border-radius: 10px; font-size: 13px;
+    border: 1px solid var(--rule); background: rgba(10,4,3,0.55); color: var(--ink-dim);
+  }
+  .note.bad { border-color: rgba(255,107,107,0.4); color: #ffc4c4; }
+  .note.good { border-color: rgba(127,227,168,0.35); color: #c8f2da; }
+
+  .hide { display: none !important; }
+  .spin { display: inline-block; animation: sp 0.9s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside>
+    <a class="brand" href="../index.html"><span class="mark"></span><span class="name">BYTE</span></a>
+
+    <nav class="side">
+      <button data-page="dashboard" class="on"><span class="dot"></span>Dashboard</button>
+      <button data-page="wallet"><span class="dot"></span>Wallet</button>
+      <button data-page="agents"><span class="dot"></span>Agents</button>
+    </nav>
+
+    <div class="foot">
+      <a href="../index.html">← Back to site</a>
+      <a href="https://github.com/Afghanistan8/byte-protocol" target="_blank" rel="noopener noreferrer">Source</a>
+      <a href="https://github.com/Afghanistan8/byte-protocol/blob/main/docs/SECURITY.md" target="_blank" rel="noopener noreferrer">Threat model</a>
+    </div>
+  </aside>
+
+  <main>
+    <div class="topbar">
+      <h1 id="title">Dashboard</h1>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <span id="conn-pill" class="tag no">Not connected</span>
+        <button class="btn" id="connect">Connect Wallet</button>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------------------ dashboard -->
+    <section id="page-dashboard">
+      <div class="banner" id="dash-banner">
+        <strong>Not connected.</strong>
+        Connect a wallet to see live data. Byte reads balances and verifies payments with a
+        <strong>viewing key</strong> — it never needs, and never asks for, a spending key.
+      </div>
+
+      <div class="cards">
+        <div class="card">
+          <div class="k">Spendable</div>
+          <div class="v muted" id="d-spendable">—</div>
+          <div class="s">zatoshis, confirmed in Ironwood</div>
+        </div>
+        <div class="card">
+          <div class="k">Pending</div>
+          <div class="v muted" id="d-pending">—</div>
+          <div class="s">received, not yet confirmed</div>
+        </div>
+        <div class="card">
+          <div class="k">Unusable</div>
+          <div class="v muted" id="d-unusable">—</div>
+          <div class="s">outside Ironwood; Byte will not spend it</div>
+        </div>
+        <div class="card">
+          <div class="k">Chain</div>
+          <div class="v muted" id="d-height">—</div>
+          <div class="s" id="d-network">no network</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><h2>What this dashboard can and cannot do</h2></header>
+        <div class="body">
+          <p>
+            Byte's verification model is <strong>view-only</strong>. A viewing key can read
+            every payment made to an account and prove an invoice was settled; it cannot move
+            a zatoshi. That is why a compromised facilitator is not a lost wallet, and it is
+            why this page asks for a viewing key rather than a seed.
+          </p>
+          <p>
+            Spending needs a signer. The MetaMask snap signs a <strong>PCZT</strong>, a
+            partially created transaction — Byte builds it, your wallet signs it, and the key
+            never leaves the wallet. Connecting <code>byte-walletd</code> instead gives full
+            spend capability, because that daemon is yours and runs on your machine.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------------------- wallet -->
+    <section id="page-wallet" class="hide">
+      <div class="panel">
+        <header>
+          <h2>Zcash wallets</h2>
+          <span class="muted mono" style="font-size:11px">checked 2026-09-29</span>
+        </header>
+        <div class="body" style="padding:0">
+          <table>
+            <thead>
+              <tr><th>Wallet</th><th>Form</th><th>Shielded</th><th>Connect from a web page</th></tr>
+            </thead>
+            <tbody id="wallet-rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel hide" id="noir-pay">
+        <header><h2>Pay a Byte invoice</h2></header>
+        <div class="body">
+          <p>
+            Paste the ZIP-321 URI from any Byte invoice. Noir will ask you to approve it.
+            The funding source is pinned to <strong>shielded</strong> &mdash; funding from
+            transparent would publish the amount, so this refuses rather than falling back,
+            exactly as the protocol does.
+          </p>
+          <label class="lab" for="noir-uri">ZIP-321 URI</label>
+          <input type="text" id="noir-uri" placeholder="zcash:u1...?amount=0.001&amp;memo=QllURTF8..." spellcheck="false">
+          <button class="btn small" id="noir-send" style="margin-top:11px">Review in Noir</button>
+          <div id="noir-result" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><h2>Why so few say “connect”</h2></header>
+        <div class="body">
+          <p>
+            There is no wallet-connect standard for Zcash. <code>window.zconnect</code> has
+            been <em>proposed</em> — the author calls it “a rough/draft API… not a final
+            design” — and no wallet implements it. WalletConnect namespaces must be CAIP-2,
+            and Zcash has no registered CAIP-2 namespace; a ZCG grant to build that support
+            was approved on 31 August 2026 with milestones running into late 2027.
+          </p>
+          <p>
+            So the wallets above that say <strong>No</strong> are not deficient. They are
+            excellent wallets with no standard for a website to speak to them. Listing them
+            as connectable would be the kind of claim this project's consistency audit exists
+            to catch.
+          </p>
+          <p>
+            What every one of them <em>does</em> support is <strong>ZIP-321</strong>: a
+            payment URI carrying address, amount and memo. Byte emits one with every invoice,
+            so any wallet here can pay a Byte invoice today — it just cannot report back.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------------------- agents -->
+    <section id="page-agents" class="hide">
+      <div class="panel">
+        <header><h2>Resolve an agent</h2></header>
+        <div class="body">
+          <p>
+            A Byte Agent Card is the one place an agent publishes an identity — agent ID,
+            endpoint, a Byte-accepting address, and the schemes it accepts — signed with
+            Ed25519 and served at
+            <code>/.well-known/byte-agent-card</code>.
+          </p>
+          <p>
+            Identity is public here <em>because the agent chose to publish it</em>. Settlement
+            uses a freshly diversified address per invoice that appears in no card and links
+            to no other payment. That split is the whole design: protocols get an attributable
+            participant, and the chain links no payment to it.
+          </p>
+
+          <label class="lab" for="agent-origin">Agent origin</label>
+          <input type="url" id="agent-origin" placeholder="https://agent.example.com" spellcheck="false">
+          <button class="btn small" id="resolve" style="margin-top:11px">Resolve and verify</button>
+
+          <div id="agent-result" style="margin-top:16px"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><h2>Verification is local</h2></header>
+        <div class="body">
+          <p>
+            The signature is checked in your browser with Web Crypto. A valid signature proves
+            only that the holder of that key made these claims — not that the agent is
+            trustworthy, that it controls the endpoint, or that it can spend from the address.
+            Binding a key to a real-world identity is outside Byte's scope, and the card format
+            does not pretend otherwise.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ------------------------------------------------------------------- modal -->
+<div class="scrim" id="scrim">
+  <div class="modal">
+    <header>
+      <h2>Connect a wallet</h2>
+      <button class="x" id="close">&times;</button>
+    </header>
+    <div class="body">
+      <button class="option" id="opt-noir">
+        <span class="t">Noir <span class="tag hot" id="noir-state">checking&hellip;</span></span>
+        <span class="d">
+          The one Zcash extension with a full dapp API. Reads your shielded balance and
+          addresses, and can pay a Byte invoice directly &mdash; memo and all.
+        </span>
+      </button>
+
+      <button class="option" id="opt-snap">
+        <span class="t">MetaMask &middot; Zcash Shielded Wallet <span class="tag hot" id="snap-state">checking…</span></span>
+        <span class="d">
+          ChainSafe's snap. Byte requests a <strong>viewing key</strong> — it can read your
+          payments and verify invoices, and cannot spend.
+        </span>
+      </button>
+
+      <button class="option" id="opt-walletd">
+        <span class="t">byte-walletd <span class="tag ok">Full</span></span>
+        <span class="d">
+          Your own wallet daemon. Mint invoice addresses, verify payments and send shielded
+          Ironwood transactions. Runs on your machine; nothing leaves it.
+        </span>
+      </button>
+
+      <div id="walletd-form" class="hide">
+        <label class="lab" for="wd-url">Sidecar URL</label>
+        <input type="url" id="wd-url" value="http://127.0.0.1:8137" spellcheck="false">
+        <label class="lab" for="wd-token">Bearer token</label>
+        <input type="password" id="wd-token" placeholder="BYTE_WALLETD_TOKEN" spellcheck="false">
+        <button class="btn small" id="wd-go" style="margin-top:13px">Connect</button>
+      </div>
+
+      <div id="modal-note" style="margin-top:14px"></div>
+
+      <p class="muted" style="font-size:12.5px; margin-top:16px; margin-bottom:0">
+        Byte never asks for a seed phrase. If any page claiming to be Byte does, it is not Byte.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  var SNAP_ID = "npm:@chainsafe/webzjs-zcash-snap";
+
+  var el = function (id) { return document.getElementById(id); };
+  var state = { kind: null, walletd: null, viewingKey: null, noir: null };
+
+  /* ------------------------------------------------------------- wallet data
+   * Researched 2026-09-29. "Connect from a web page" is the honest column: it asks
+   * whether a website can talk to the wallet, not whether the wallet is any good.
+   */
+  var WALLETS = [
+    { name: "MetaMask + Zcash Snap", form: "Extension", shielded: "Yes",
+      connect: "yes", how: "ChainSafe snap. getViewingKey and signPczt over the snap RPC." },
+    { name: "Brave Wallet", form: "Browser-native", shielded: "Yes",
+      connect: "partial", how: "Shielded ZEC since April 2025, but no documented Zcash dapp API." },
+    { name: "Noir", form: "Extension", shielded: "Yes",
+      connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo. Ironwood support added in v0.1.26." },
+    { name: "Zucchini", form: "Extension", shielded: "Yes",
+      connect: "no", how: "Chrome extension, no published web interface." },
+    { name: "Zodl", form: "Mobile", shielded: "Yes",
+      connect: "no", how: "The February 2026 rebrand of Zashi. Pay by ZIP-321 URI." },
+    { name: "YWallet", form: "Mobile / desktop", shielded: "Yes",
+      connect: "no", how: "Unified addresses and ZIP-321." },
+    { name: "Zingo", form: "Mobile", shielded: "Yes",
+      connect: "no", how: "Shielded-first. Pay by ZIP-321 URI." },
+    { name: "Zecwallet", form: "Desktop", shielded: "Yes",
+      connect: "no", how: "Full and light. Unified addresses." },
+    { name: "Ledger", form: "Hardware", shielded: "Yes",
+      connect: "no", how: "Shielded signing added August 2026." },
+    { name: "Nighthawk", form: "Mobile", shielded: "Partial",
+      connect: "no", how: "Shielded in specific setups; unified-address support incomplete." },
+    { name: "Zelcore", form: "Mobile / desktop", shielded: "Partial",
+      connect: "no", how: "As above." }
+  ];
+
+  function renderWallets() {
+    var tbody = el("wallet-rows");
+    tbody.innerHTML = "";
+    WALLETS.forEach(function (w) {
+      var tr = document.createElement("tr");
+
+      var name = document.createElement("td");
+      name.innerHTML = "<strong>" + w.name + "</strong>";
+
+      var form = document.createElement("td");
+      form.className = "muted";
+      form.textContent = w.form;
+
+      var shield = document.createElement("td");
+      var st = document.createElement("span");
+      st.className = "tag " + (w.shielded === "Yes" ? "ok" : "warn");
+      st.textContent = w.shielded;
+      shield.appendChild(st);
+
+      var conn = document.createElement("td");
+      var ct = document.createElement("span");
+      ct.className = "tag " + (w.connect === "yes" ? "ok" : w.connect === "partial" ? "warn" : "no");
+      ct.textContent = w.connect === "yes" ? "Yes" : w.connect === "partial" ? "Not yet" : "No";
+      conn.appendChild(ct);
+      var how = document.createElement("div");
+      how.className = "muted";
+      how.style.fontSize = "12.5px";
+      how.style.marginTop = "5px";
+      how.textContent = w.how;
+      conn.appendChild(how);
+
+      tr.appendChild(name); tr.appendChild(form); tr.appendChild(shield); tr.appendChild(conn);
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* ------------------------------------------------------------------- pages */
+  function show(page) {
+    ["dashboard", "wallet", "agents"].forEach(function (p) {
+      el("page-" + p).classList.toggle("hide", p !== page);
+    });
+    document.querySelectorAll("nav.side button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.page === page);
+    });
+    el("title").textContent = page === "dashboard" ? "Dashboard"
+      : page === "wallet" ? "Wallet" : "Agents";
+  }
+
+  document.querySelectorAll("nav.side button").forEach(function (b) {
+    b.addEventListener("click", function () { show(b.dataset.page); });
+  });
+
+  /* ------------------------------------------------------------------- modal */
+  function openModal() { el("scrim").classList.add("on"); detectNoir(); detectSnap(); }
+  function closeModal() { el("scrim").classList.remove("on"); }
+
+  el("connect").addEventListener("click", openModal);
+  el("close").addEventListener("click", closeModal);
+  el("scrim").addEventListener("click", function (e) { if (e.target === el("scrim")) closeModal(); });
+
+  function note(html, kind) {
+    el("modal-note").innerHTML = '<div class="note ' + (kind || "") + '">' + html + "</div>";
+  }
+
+  /* ------------------------------------------------------------------ Noir
+   * Noir injects a provider at window.noirwallet. Method names and parameter shapes come
+   * from NoirWallet/noir-wallet-sdk, not from guesswork. It added Ironwood support in
+   * v0.1.26, which is what makes it usable for Byte at all.
+   */
+
+  function noir() {
+    return typeof window !== "undefined" && window.noirwallet ? window.noirwallet : null;
+  }
+
+  function noirRequest(method, params) {
+    var provider = noir();
+    if (!provider) return Promise.reject(new Error("Noir is not installed"));
+    return provider.request(
+      params === undefined ? { method: method } : { method: method, params: params }
+    );
+  }
+
+  function detectNoir() {
+    var badge = el("noir-state");
+    if (!noir()) {
+      badge.className = "tag no";
+      badge.textContent = "Not installed";
+      el("opt-noir").disabled = true;
+      return false;
+    }
+    badge.className = "tag hot";
+    badge.textContent = "Detected";
+    el("opt-noir").disabled = false;
+    return true;
+  }
+
+  el("opt-noir").addEventListener("click", function () {
+    if (!noir()) return;
+    note('<span class="spin">&#9676;</span> Asking Noir for access&hellip;');
+
+    noirRequest("zcash_requestAccounts")
+      .then(function (result) {
+        state.kind = "noir";
+        state.noir = result || {};
+        connected("Noir connected");
+        note("Connected to Noir. Reading your balance&hellip;", "good");
+        return refreshNoir();
+      })
+      .then(function () { setTimeout(closeModal, 1400); })
+      .catch(function (error) {
+        note(
+          "Noir refused or is unavailable: " +
+            escapeHtml(error && error.message ? error.message : "unknown error"),
+          "bad"
+        );
+      });
+  });
+
+  /** Noir reports balances in ZEC as strings; Byte works in zatoshis everywhere. */
+  function zecToZat(value) {
+    if (value === undefined || value === null || value === "") return null;
+    var m = /^(\d+)(?:\.(\d{1,8}))?$/.exec(String(value).trim());
+    if (!m) return null;
+    return (BigInt(m[1]) * 100000000n + BigInt((m[2] || "").padEnd(8, "0"))).toString(10);
+  }
+
+  function setStat(id, zat) {
+    var node = el(id);
+    if (zat === null || zat === undefined) {
+      node.textContent = "—";
+      node.className = "v muted";
+      return;
+    }
+    node.textContent = grouped(zat);
+    node.className = "v";
+  }
+
+  function refreshNoir() {
+    return noirRequest("zcash_getBalance")
+      .then(function (b) {
+        // Shielded is what Byte can spend. Transparent is reported as unusable, because
+        // moving it would cross pools and ZIP 318 makes that amount public.
+        setStat("d-spendable", zecToZat(b && (b.spendable || b.shielded)));
+        setStat("d-pending", null);
+        setStat("d-unusable", zecToZat(b && b.transparent));
+        el("d-network").textContent = "via Noir";
+        el("d-height").textContent = "—";
+        el("d-height").className = "v muted";
+        el("noir-pay").classList.remove("hide");
+      })
+      .catch(function () {});
+  }
+
+  /**
+   * Pay a Byte invoice from Noir.
+   *
+   * fundingSource is pinned to shielded. Letting the wallet fund from transparent would
+   * publish the amount, which is the disclosure Byte exists to prevent, so this refuses
+   * rather than falling back -- exactly as the protocol does.
+   */
+  el("noir-send").addEventListener("click", function () {
+    var out = el("noir-result");
+    var parsed;
+    try {
+      parsed = parseZip321(el("noir-uri").value.trim());
+    } catch (e) {
+      out.innerHTML = '<div class="note bad">' + escapeHtml(e.message) + "</div>";
+      return;
+    }
+
+    out.innerHTML = '<div class="note"><span class="spin">&#9676;</span> Awaiting approval in Noir&hellip;</div>';
+
+    noirRequest("zcash_sendTransaction", [
+      {
+        to: parsed.address,
+        amount: parsed.amountZec,
+        memo: parsed.memo,
+        fundingSource: "shielded"
+      }
+    ])
+      .then(function (txid) {
+        out.innerHTML =
+          '<div class="note good"><strong>Sent.</strong><br><span class="mono">' +
+          escapeHtml(String(txid)) +
+          "</span></div>";
+      })
+      .catch(function (error) {
+        out.innerHTML =
+          '<div class="note bad">Not sent: ' +
+          escapeHtml(error && error.message ? error.message : "unknown error") +
+          "</div>";
+      });
+  });
+
+  /** Minimal ZIP-321 reader: enough to hand a Byte invoice to a wallet. */
+  function parseZip321(uri) {
+    if (!/^zcash:/.test(uri)) throw new Error("That is not a zcash: payment URI.");
+    var rest = uri.slice("zcash:".length);
+    var q = rest.indexOf("?");
+    var address = q === -1 ? rest : rest.slice(0, q);
+    if (!address) throw new Error("The URI carries no address.");
+
+    var params = {};
+    (q === -1 ? "" : rest.slice(q + 1))
+      .split("&")
+      .filter(Boolean)
+      .forEach(function (pair) {
+        var eq = pair.indexOf("=");
+        params[decodeURIComponent(eq === -1 ? pair : pair.slice(0, eq))] =
+          eq === -1 ? "" : pair.slice(eq + 1);
+      });
+
+    if (params.amount === undefined) throw new Error("The URI carries no amount.");
+
+    var memo;
+    if (params.memo !== undefined) {
+      var b64 = params.memo.replace(/-/g, "+").replace(/_/g, "/");
+      var padded = b64 + "===".slice((b64.length + 3) % 4);
+      memo = new TextDecoder().decode(
+        Uint8Array.from(atob(padded), function (c) { return c.charCodeAt(0); })
+      );
+    }
+    return { address: address, amountZec: decodeURIComponent(params.amount), memo: memo };
+  }
+
+  /* -------------------------------------------------------------- MetaMask */
+
+  function hasMetaMask() {
+    return typeof window.ethereum !== "undefined" && window.ethereum !== null;
+  }
+
+  function detectSnap() {
+    var badge = el("snap-state");
+    if (!hasMetaMask()) {
+      badge.className = "tag no";
+      badge.textContent = "MetaMask not found";
+      el("opt-snap").disabled = true;
+      return;
+    }
+    badge.className = "tag hot";
+    badge.textContent = "Available";
+    el("opt-snap").disabled = false;
+  }
+
+  el("opt-snap").addEventListener("click", function () {
+    if (!hasMetaMask()) return;
+    note('<span class="spin">◠</span> Asking MetaMask to install and connect the Zcash snap…');
+
+    var req = {};
+    req[SNAP_ID] = {};
+
+    window.ethereum
+      .request({ method: "wallet_requestSnaps", params: req })
+      .then(function () {
+        // getViewingKey is exactly Byte's model: read payments, prove invoices, cannot spend.
+        return window.ethereum.request({
+          method: "wallet_invokeSnap",
+          params: { snapId: SNAP_ID, request: { method: "getViewingKey" } }
+        });
+      })
+      .then(function (viewingKey) {
+        state.kind = "snap";
+        state.viewingKey = typeof viewingKey === "string" ? viewingKey : JSON.stringify(viewingKey);
+        connected("MetaMask · view-only");
+        note(
+          "Connected with a <strong>viewing key</strong>. Byte can read payments to this " +
+          "account and verify invoices against them. It cannot spend, and did not ask to.",
+          "good"
+        );
+        setTimeout(closeModal, 1700);
+      })
+      .catch(function (error) {
+        note(
+          "MetaMask refused or the snap is unavailable: " +
+          (error && error.message ? escapeHtml(error.message) : "unknown error"),
+          "bad"
+        );
+      });
+  });
+
+  /* ------------------------------------------------------------- byte-walletd */
+
+  el("opt-walletd").addEventListener("click", function () {
+    el("walletd-form").classList.toggle("hide");
+  });
+
+  el("wd-go").addEventListener("click", function () {
+    var url = el("wd-url").value.replace(/\/+$/, "");
+    var token = el("wd-token").value.trim();
+    if (token === "") { note("A bearer token is required.", "bad"); return; }
+
+    note('<span class="spin">◠</span> Connecting to ' + escapeHtml(url) + "…");
+
+    fetch(url + "/health")
+      .then(function (r) { return r.json(); })
+      .then(function (health) {
+        state.kind = "walletd";
+        state.walletd = { url: url, token: token };
+        connected("byte-walletd · " + (health.canSpend ? "full" : "view-only"));
+        note(
+          "Connected to byte-walletd on " + escapeHtml(health.network || "unknown network") +
+          ". This daemon " + (health.canSpend ? "holds a spending key." : "is view-only.") ,
+          "good"
+        );
+        refresh();
+        setTimeout(closeModal, 1400);
+      })
+      .catch(function (error) {
+        note(
+          "Could not reach byte-walletd at " + escapeHtml(url) + ". Is it running? " +
+          "Start it with <code>./target/debug/byte-walletd</code>. " +
+          "<br><br>Browser error: " + escapeHtml(String(error && error.message)),
+          "bad"
+        );
+      });
+  });
+
+  function connected(labelText) {
+    var pill = el("conn-pill");
+    pill.className = "tag ok";
+    pill.textContent = labelText;
+    el("connect").textContent = "Reconnect";
+    el("dash-banner").innerHTML =
+      "<strong>Connected.</strong> " +
+      (state.kind === "snap"
+        ? "Byte holds a viewing key for this account. It can verify payments; it cannot spend."
+        : state.kind === "noir"
+          ? "Connected to Noir. Shielded is what Byte can spend; transparent is shown as unusable, because moving it would cross pools and publish the amount."
+          : "Reading live data from your wallet daemon.");
+  }
+
+  /* -------------------------------------------------------------- live data */
+
+  function grouped(value) {
+    if (value === null || value === undefined) return "—";
+    return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  }
+
+  function refresh() {
+    if (state.kind !== "walletd") return;
+    var h = { authorization: "Bearer " + state.walletd.token };
+
+    fetch(state.walletd.url + "/status", { headers: h })
+      .then(function (r) { return r.json(); })
+      .then(function (s) {
+        el("d-height").textContent = s.synced ? grouped(s.syncedHeight) : "syncing";
+        el("d-height").className = "v";
+        el("d-network").textContent = s.network || "—";
+      })
+      .catch(function () {});
+
+    fetch(state.walletd.url + "/balance", { headers: h })
+      .then(function (r) {
+        // An unsynced wallet answers 503 rather than inventing zeroes, and so does this page.
+        if (!r.ok) throw new Error("not synced");
+        return r.json();
+      })
+      .then(function (b) {
+        [
+          ["d-spendable", b.spendableZat],
+          ["d-pending", b.pendingZat],
+          ["d-unusable", b.unusableZat]
+        ].forEach(function (pair) {
+          var node = el(pair[0]);
+          node.textContent = grouped(pair[1]);
+          node.className = "v";
+        });
+      })
+      .catch(function () {
+        // Leave the dashes. An unsynced wallet answers 503 rather than inventing zeroes,
+        // and a zero here would be indistinguishable from an empty wallet.
+        ["d-spendable", "d-pending", "d-unusable"].forEach(function (id) {
+          el(id).textContent = "—";
+          el(id).className = "v muted";
+        });
+      });
+  }
+
+  /* ------------------------------------------------------------------ agents */
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function hexToBytes(hex) {
+    var out = new Uint8Array(hex.length / 2);
+    for (var i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+    return out;
+  }
+
+  /**
+   * The canonical encoding from packages/registry/src/card.ts: a domain tag and the fields
+   * in a fixed order, joined by a null byte. Not JSON.stringify — key order and escaping are
+   * engine details, and a signature is only meaningful over bytes both sides reproduce.
+   */
+  function canonicalCard(card) {
+    var fields = [
+      "byte-agent-card-v1",
+      card.agentId, card.endpoint, card.network, card.ua,
+      (card.schemes || []).join(","),
+      card.name || "",
+      card.issuedAt, card.expiresAt || ""
+    ];
+    return new TextEncoder().encode(fields.join("\u0000"));
+  }
+
+  el("resolve").addEventListener("click", function () {
+    var origin = el("agent-origin").value.trim();
+    var out = el("agent-result");
+    if (origin === "") { out.innerHTML = '<div class="note bad">Enter an origin.</div>'; return; }
+
+    out.innerHTML = '<div class="note"><span class="spin">◠</span> Fetching the card…</div>';
+
+    var url;
+    try { url = new URL("/.well-known/byte-agent-card", origin).toString(); }
+    catch (e) { out.innerHTML = '<div class="note bad">That is not a valid origin.</div>'; return; }
+
+    fetch(url, { headers: { accept: "application/json" } })
+      .then(function (r) {
+        if (!r.ok) throw new Error("the origin returned HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (card) {
+        if (!crypto.subtle) throw new Error("Web Crypto is unavailable in this context");
+        return crypto.subtle
+          .importKey("raw", hexToBytes(card.issuer), { name: "Ed25519" }, false, ["verify"])
+          .then(function (key) {
+            return crypto.subtle.verify(
+              "Ed25519", key, hexToBytes(card.signature), canonicalCard(card)
+            );
+          })
+          .then(function (valid) { return { card: card, valid: valid }; });
+      })
+      .then(function (result) {
+        var c = result.card;
+        out.innerHTML =
+          '<div class="note ' + (result.valid ? "good" : "bad") + '">' +
+          (result.valid
+            ? "<strong>Signature verifies.</strong> The holder of this key made these claims."
+            : "<strong>Signature does not verify.</strong> Do not pay this address.") +
+          "</div>" +
+          '<div class="panel" style="margin-top:12px"><div class="body">' +
+          "<p><strong>" + escapeHtml(c.name || c.agentId) + "</strong></p>" +
+          '<p class="mono muted">' + escapeHtml(c.endpoint) + "</p>" +
+          '<p class="mono muted">' + escapeHtml(c.ua) + "</p>" +
+          "<p>Accepts: " + escapeHtml((c.schemes || []).join(", ")) + "</p>" +
+          "</div></div>";
+      })
+      .catch(function (error) {
+        out.innerHTML =
+          '<div class="note bad">Could not resolve a card: ' +
+          escapeHtml(error && error.message ? error.message : "unknown error") +
+          ". Ed25519 verification also needs a browser that exposes it in Web Crypto.</div>";
+      });
+  });
+
+  renderWallets();
+  detectNoir();
+  detectSnap();
+})();
+</script>
+</body>
+</html>
