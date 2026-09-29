@@ -268,10 +268,16 @@
             why this page asks for a viewing key rather than a seed.
           </p>
           <p>
-            Spending needs a signer. The MetaMask snap signs a <strong>PCZT</strong>, a
-            partially created transaction: Byte builds it, your wallet signs it, and the key
-            never leaves the wallet. Connecting <code>byte-walletd</code> instead gives full
-            spend capability, because that daemon is yours and runs on your machine.
+            Spending needs a signer. Today that means <code>byte-walletd</code>, the daemon
+            that runs on your own machine and holds your spending key, or Noir, which builds
+            and signs in the extension. The MetaMask snap is <strong>read-only here</strong>:
+            this page asks it for a viewing key and nothing else.
+          </p>
+          <p class="muted">
+            Split signing, where Byte builds a partially created transaction and a separate
+            signer completes it, is <strong>not built</strong>. It is the obvious next step
+            and the pieces exist, but nothing in Byte creates one today and this page will
+            not claim otherwise until it does.
           </p>
         </div>
       </div>
@@ -287,7 +293,7 @@
         <div class="body" style="padding:0">
           <table>
             <thead>
-              <tr><th>Wallet</th><th>Form</th><th>Shielded</th><th>Connect from a web page</th></tr>
+              <tr><th>Wallet</th><th>Form</th><th>Ironwood</th><th>Connect from a web page</th></tr>
             </thead>
             <tbody id="wallet-rows"></tbody>
           </table>
@@ -327,9 +333,19 @@
             to catch.
           </p>
           <p>
-            What every one of them <em>does</em> support is <strong>ZIP-321</strong>: a
-            payment URI carrying address, amount and memo. Byte emits one with every invoice,
-            so any wallet here can pay a Byte invoice today: it just cannot report back.
+            What they support instead is <strong>ZIP-321</strong>: a payment URI carrying
+            address, amount and memo. Byte emits one with every invoice, so a wallet marked
+            <strong>Verified</strong> above can pay a Byte invoice today. It just cannot
+            report back.
+          </p>
+          <p>
+            <strong>Verified</strong> means a release note names Ironwood, with a version and
+            a date, and that version is in the table. <strong>Unverified</strong> does not
+            mean broken: it means nobody has published a statement I could check, and after
+            NU6.3 only a wallet updated for Ironwood can create a shielded output at all. I
+            would rather say "I could not verify this" than let you send money on my
+            optimism. The sources are in
+            <code>docs/TOOLCHAIN.md</code>.
           </p>
         </div>
       </div>
@@ -440,28 +456,45 @@
    * whether a website can talk to the wallet, not whether the wallet is any good.
    */
   var WALLETS = [
-    { name: "MetaMask + Zcash Snap", form: "Extension", shielded: "Yes",
-      connect: "yes", how: "ChainSafe snap. getViewingKey and signPczt over the snap RPC." },
-    { name: "Brave Wallet", form: "Browser-native", shielded: "Yes",
-      connect: "partial", how: "Shielded ZEC since April 2025, but no documented Zcash dapp API." },
-    { name: "Noir", form: "Extension", shielded: "Yes",
-      connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo. Ironwood support added in v0.1.26." },
-    { name: "Zucchini", form: "Extension", shielded: "Yes",
-      connect: "no", how: "Chrome extension, no published web interface." },
-    { name: "Zodl", form: "Mobile", shielded: "Yes",
+    { name: "Noir", form: "Extension", ironwood: "yes",
+      since: "v0.1.26, 27 Jul 2026",
+      connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo." },
+    { name: "Zodl", form: "Mobile", ironwood: "yes",
+      since: "v3.8.0; Move to Ironwood in v3.9.0, 8 Aug 2026",
       connect: "no", how: "The February 2026 rebrand of Zashi. Pay by ZIP-321 URI." },
-    { name: "YWallet", form: "Mobile / desktop", shielded: "Yes",
-      connect: "no", how: "Unified addresses and ZIP-321." },
-    { name: "Zingo", form: "Mobile", shielded: "Yes",
+    { name: "Zingo", form: "Mobile / desktop", ironwood: "yes",
+      since: "v2.0.22 (313), 31 Jul 2026",
       connect: "no", how: "Shielded-first. Pay by ZIP-321 URI." },
-    { name: "Zecwallet", form: "Desktop", shielded: "Yes",
-      connect: "no", how: "Full and light. Unified addresses." },
-    { name: "Ledger", form: "Hardware", shielded: "Yes",
-      connect: "no", how: "Shielded signing added August 2026." },
-    { name: "Nighthawk", form: "Mobile", shielded: "Partial",
+    { name: "Zkool", form: "Mobile / desktop", ironwood: "yes",
+      since: "v6.25.0, 27 Jul 2026",
+      connect: "no", how: "YWallet's successor, from the same developer. Pay by ZIP-321 URI." },
+    { name: "Keystone", form: "Hardware", ironwood: "yes",
+      since: "Firmware 3.0.2; latest 3.0.4, 12 Aug 2026",
+      connect: "no", how: "Ironwood support and batch PCZT signing." },
+    { name: "MetaMask + ChainSafe snap", form: "Extension", ironwood: "unverified",
+      since: "Published snap is v0.3.0, 6 Feb 2026: before Ironwood activated",
+      connect: "yes", how: "Byte asks it for a viewing key, and nothing else: it can read payments and verify invoices, and cannot spend." },
+    { name: "Ledger", form: "Hardware", ironwood: "unverified",
+      since: "PCZT v2 signing merged into app-zcash 27 Jul 2026, not yet through Ledger's review",
+      connect: "no", how: "Shielded signing exists in the app; the Ironwood path has not shipped." },
+    { name: "Brave Wallet", form: "Browser-native", ironwood: "unverified",
+      since: "No release note found stating NU6.3 support",
+      connect: "no", how: "Shielded ZEC since April 2025, but no documented Zcash dapp API." },
+    { name: "Zucchini", form: "Extension", ironwood: "unverified",
+      since: "No release note found stating NU6.3 support",
+      connect: "no", how: "Chrome extension, no published web interface." },
+    { name: "Nighthawk", form: "Mobile", ironwood: "unverified",
+      since: "No release note found stating NU6.3 support",
       connect: "no", how: "Shielded in specific setups; unified-address support incomplete." },
-    { name: "Zelcore", form: "Mobile / desktop", shielded: "Partial",
-      connect: "no", how: "As above." }
+    { name: "Zelcore", form: "Mobile / desktop", ironwood: "unverified",
+      since: "No release note found stating NU6.3 support",
+      connect: "no", how: "As above." },
+    { name: "YWallet", form: "Mobile / desktop", ironwood: "no",
+      since: "The developer has said it will not be updated for Ironwood",
+      connect: "no", how: "Use Zkool, the successor from the same developer." },
+    { name: "Zecwallet Lite", form: "Desktop", ironwood: "discontinued",
+      since: "Sunset and unmaintained",
+      connect: "no", how: "Funds stranded in an old client can be recovered with Sovright's Argos tool." }
   ];
 
   function renderWallets() {
@@ -477,11 +510,25 @@
       form.className = "muted";
       form.textContent = w.form;
 
+      // Ironwood support, and where the claim comes from. After NU6.3 only a wallet
+      // updated for Ironwood can create shielded outputs at all, so "shielded: yes" is no
+      // longer the question worth answering.
       var shield = document.createElement("td");
       var st = document.createElement("span");
-      st.className = "tag " + (w.shielded === "Yes" ? "ok" : "warn");
-      st.textContent = w.shielded;
+      st.className =
+        "tag " + (w.ironwood === "yes" ? "ok" : w.ironwood === "unverified" ? "warn" : "no");
+      st.textContent =
+        w.ironwood === "yes" ? "Verified"
+          : w.ironwood === "unverified" ? "Unverified"
+          : w.ironwood === "no" ? "Not supported"
+          : "Discontinued";
       shield.appendChild(st);
+      var since = document.createElement("div");
+      since.className = "muted";
+      since.style.fontSize = "12.5px";
+      since.style.marginTop = "5px";
+      since.textContent = w.since;
+      shield.appendChild(since);
 
       var conn = document.createElement("td");
       var ct = document.createElement("span");

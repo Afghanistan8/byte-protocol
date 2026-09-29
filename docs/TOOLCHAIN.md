@@ -215,3 +215,34 @@ than only in documentation.
 `libsqlite3-sys` 0.35.0, `rusqlite` 0.37.0, `orchard` 0.15.5 and `sapling-crypto` 0.7.0
 all built, so the C toolchain is wired up correctly and the sidecar has no known
 Windows-specific blocker.
+
+
+---
+
+## Wallet Ironwood support, as listed on the dashboard
+
+After NU6.3 only a wallet updated for Ironwood can create a shielded output at all, so
+"supports shielded ZEC" stopped being the useful question on 28 July 2026. The dashboard's
+table therefore reports **Ironwood** status, and this is where each claim comes from.
+
+**Verified** means a release note names Ironwood with a version and a date. Everything else
+is **Unverified**, which does not mean broken: it means no statement was found that could be
+checked, and Byte will not let a reader send money on its optimism.
+
+| Wallet | Status | Evidence |
+|--------|--------|----------|
+| Noir | Verified | v0.1.26, 27 Jul 2026 |
+| Zodl | Verified | v3.8.0 Ironwood-compatible; "Move to Ironwood" shipped in v3.9.0 on 8 Aug 2026; latest v3.9.5, 18 Aug |
+| Zingo | Verified | v2.0.22 (313), 31 Jul 2026 |
+| Zkool | Verified | v6.25.0, 27 Jul 2026; v6.27.0, 15 Aug |
+| Keystone | Verified | Firmware 3.0.2 added Ironwood and batch PCZT signing; latest 3.0.4, 12 Aug 2026 |
+| MetaMask + ChainSafe snap | **Unverified** | The published snap `@chainsafe/webzjs-zcash-snap` is **0.3.0, 6 February 2026** — nearly six months *before* Ironwood activated — and neither its description nor its readme mentions Ironwood or NU6.3. The WebZjs library may support it upstream; the shipped snap carries no such claim. Byte asks this snap for a viewing key only, which is unaffected. |
+| Ledger | **Unverified** | PCZT v2 signing was merged into `app-zcash` on 27 Jul 2026 and, as of the 1 Aug community list, had "still not [gone] through Ledger's own review". Merged is not shipped. |
+| Brave, Zucchini, Nighthawk, Zelcore | **Unverified** | No release note found stating NU6.3 support |
+| YWallet | **Not supported** | The developer stated directly that YWallet will not be updated for Ironwood. Zkool is the successor, from the same developer. |
+| Zecwallet Lite | **Discontinued** | Sunset and unmaintained. Sovright's Argos exists specifically to recover ZEC stranded in old Zecwallet Lite clients, which is the clearest possible statement that it is not a wallet to send new money to. |
+
+Primary source for most of the above: the Zcash community forum thread
+["Ironwood is Here! Updated Wallets, Libraries"](https://forum.zcashcommunity.com/t/ironwood-is-here-updated-wallets-libraries-aug-1/56557),
+1 August 2026. Snap version and date from
+[the npm registry](https://www.npmjs.com/package/@chainsafe/webzjs-zcash-snap).

@@ -45,8 +45,12 @@ Ironwood support in v0.1.26.
 
 **MetaMask**, through ChainSafe's `@chainsafe/webzjs-zcash-snap`. The dashboard asks for
 `getViewingKey`, which is precisely Byte's model — able to read payments and verify invoices,
-unable to spend. The snap also exposes `signPczt`, matching the `pczt` crate already in the
-sidecar's dependencies.
+unable to spend. That is all the dashboard asks it for.
+
+The snap also exposes a PCZT signing method, and `pczt` is already in the sidecar's
+dependency tree. But **nothing in Byte builds a PCZT today**, so neither this file nor the
+dashboard claims a split-signing flow. When one exists and has a test, it can be described
+here.
 
 **byte-walletd**, your own daemon, for full spend capability.
 
