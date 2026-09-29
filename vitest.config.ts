@@ -16,6 +16,7 @@ export default defineConfig({
       "@byte-protocol/stores": src("stores"),
       "@byte-protocol/server": src("server"),
       "@byte-protocol/client": src("client"),
+      "@byte-protocol/pricing": src("pricing"),
       "@byte-protocol/registry": src("registry"),
       "@byte-protocol/facilitator": src("facilitator"),
       "@byte-protocol/adapter-x402": fileURLToPath(new URL("./packages/adapters/x402/src/index.ts", import.meta.url)),

@@ -364,6 +364,12 @@ importers:
         specifier: workspace:*
         version: link:../stores
 
+  packages/pricing:
+    dependencies:
+      '@byte-protocol/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/rails/interface:
     dependencies:
       '@byte-protocol/core':

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { NETWORK_TESTNET, newInvoiceId } from "@byte-protocol/core";
 import type { StoredInvoice } from "@byte-protocol/core";
 import { MemoryInvoiceStore, MemoryReceiptStore } from "@byte-protocol/stores";
+import type { PriceSource } from "@byte-protocol/core";
 import { SpendGuard } from "@byte-protocol/client";
 import { createMockPair, viewOnly } from "@byte-protocol/wallet";
 import { createConsoleApi, type ConsoleRequest } from "./api.js";
@@ -24,7 +25,7 @@ function invoice(overrides: Partial<StoredInvoice> = {}): StoredInvoice {
   };
 }
 
-function harness(options: { guard?: SpendGuard } = {}) {
+function harness(options: { guard?: SpendGuard; priceSource?: PriceSource } = {}) {
   const pair = createMockPair(NETWORK_TESTNET);
   const invoices = new MemoryInvoiceStore();
   const receipts = new MemoryReceiptStore();
@@ -35,6 +36,7 @@ function harness(options: { guard?: SpendGuard } = {}) {
     token: TOKEN,
     label: "demo node",
     ...(options.guard !== undefined ? { guard: options.guard } : {}),
+    ...(options.priceSource !== undefined ? { priceSource: options.priceSource } : {}),
   });
   return { pair, invoices, receipts, handle };
 }
@@ -266,5 +268,72 @@ describe("the console server", () => {
     } finally {
       await running.close();
     }
+  });
+});
+
+describe("GET /price", () => {
+  const healthy: PriceSource = {
+    sourceId: "test",
+    getZecUsd: async () => ({
+      price: 231.5,
+      source: "test",
+      at: Date.now() - 30_000,
+      timestamped: true,
+    }),
+  };
+
+  it("reports the current rate and how old it is", async () => {
+    const h = harness({ priceSource: healthy });
+    const res = await h.handle(request("GET", "/price"));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ healthy: true, price: 231.5, source: "test" });
+    expect((res.body as { ageSeconds: number }).ageSeconds).toBeGreaterThanOrEqual(29);
+  });
+
+  it("reports a refusing feed as unhealthy, not as a server error", async () => {
+    // The console is working. The feed is not. Collapsing that into a 500 would tell an
+    // operator their console is broken and send them looking in the wrong place.
+    const h = harness({
+      priceSource: {
+        sourceId: "stale-feed",
+        getZecUsd: async () => {
+          throw new Error("last published 600s ago, over the 120s limit");
+        },
+      },
+    });
+
+    const res = await h.handle(request("GET", "/price"));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ healthy: false, sourceId: "stale-feed" });
+    expect((res.body as { error: string }).error).toMatch(/600s ago/);
+  });
+
+  it("has no age to report for an untimestamped source", async () => {
+    const h = harness({
+      priceSource: {
+        sourceId: "kraken",
+        getZecUsd: async () => ({
+          price: 231.5,
+          source: "kraken",
+          at: Date.now(),
+          timestamped: false,
+        }),
+      },
+    });
+
+    const res = await h.handle(request("GET", "/price"));
+    expect((res.body as { ageSeconds: number | null }).ageSeconds).toBeNull();
+  });
+
+  it("404s when no price source is configured", async () => {
+    const h = harness();
+    expect((await h.handle(request("GET", "/price"))).status).toBe(404);
+  });
+
+  it("is behind the same token as everything else", async () => {
+    const h = harness({ priceSource: healthy });
+    const res = await h.handle(request("GET", "/price", { token: null }));
+    expect(res.status).toBe(401);
   });
 });

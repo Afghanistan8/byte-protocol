@@ -335,3 +335,132 @@ describe("the verifier does not leak", () => {
     expect(calls).toBe(0);
   });
 });
+
+describe("USD-priced invoices", () => {
+  /** A price source with no network behind it, fixed so the arithmetic is checkable. */
+  function priceSource(price: number, source = "test") {
+    return {
+      sourceId: source,
+      getZecUsd: async () => ({ price, source, at: Date.now(), timestamped: true }),
+    };
+  }
+
+  function usdIssuer(price: number) {
+    const { payee } = createMockPair(NETWORK_TESTNET);
+    const store = new MemoryInvoiceStore();
+    const issuer = new InvoiceIssuer({
+      wallet: payee,
+      store,
+      secret: SECRET,
+      priceSource: priceSource(price),
+    });
+    return { issuer, store, payee };
+  }
+
+  it("converts USD to zatoshis and locks the quote into the invoice", async () => {
+    const { issuer } = usdIssuer(200);
+    const requirements = await issuer.issueUsd("2.00");
+
+    // $2 at $200/ZEC is 0.01 ZEC.
+    expect(requirements.amount).toBe("1000000");
+    expect(requirements.price).toMatchObject({
+      priceUsd: "2.00",
+      zecUsd: 200,
+      priceSource: "test",
+    });
+    expect(requirements.price?.quotedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
+  it("stores the quote, so a dispute can point at the rate actually used", async () => {
+    const { issuer, store } = usdIssuer(200);
+    const requirements = await issuer.issueUsd("2.00");
+
+    const stored = await store.get(requirements.invoiceId);
+    expect(stored?.price?.zecUsd).toBe(200);
+  });
+
+  it("is verified against the locked amount, never re-priced", async () => {
+    // The whole point of locking. The payer builds a transaction for one amount; if the
+    // payee re-priced while it confirmed, a correct payment would become "underpaid" for a
+    // transaction that can no longer be changed.
+    const pair = createMockPair(NETWORK_TESTNET);
+    const { payee, payer, chain } = pair;
+    pair.fundPayer("100000000");
+    const store = new MemoryInvoiceStore();
+    const secret = SECRET;
+
+    let rate = 200;
+    const issuer = new InvoiceIssuer({
+      wallet: payee,
+      store,
+      secret,
+      priceSource: {
+        sourceId: "moving",
+        getZecUsd: async () => ({
+          price: rate,
+          source: "moving",
+          at: Date.now(),
+          timestamped: true,
+        }),
+      },
+    });
+    const verifier = new PaymentVerifier({ wallet: payee, store, secret });
+
+    const requirements = await issuer.issueUsd("2.00");
+    const { txid } = await payer.send({
+      to: requirements.payTo,
+      amountZat: requirements.amount,
+      memo: requirements.memo,
+    });
+    chain.mine(1);
+
+    // The market moves hard between issue and settlement.
+    rate = 20;
+
+    const result = await verifier.verify(requirements.invoiceId, txid);
+    expect(result.ok).toBe(true);
+  });
+
+  it("refuses a malformed price rather than coercing it", async () => {
+    const { issuer } = usdIssuer(200);
+    for (const bad of ["1.234", "-1", "1e2", "", "abc"]) {
+      await expect(issuer.issueUsd(bad), bad).rejects.toThrow(ByteProtocolError);
+    }
+  });
+
+  it("refuses to issue when the price source refuses", async () => {
+    // A stale or contradicted price must not become an invoice. An attacker who can freeze
+    // a feed could otherwise buy at yesterday's rate indefinitely.
+    const { payee } = createMockPair(NETWORK_TESTNET);
+    const issuer = new InvoiceIssuer({
+      wallet: payee,
+      store: new MemoryInvoiceStore(),
+      secret: SECRET,
+      priceSource: {
+        sourceId: "broken",
+        getZecUsd: async () => {
+          throw new Error("price feed is stale");
+        },
+      },
+    });
+
+    await expect(issuer.issueUsd("2.00")).rejects.toThrow(/stale/);
+  });
+
+  it("refuses issueUsd with no price source at all", async () => {
+    const { payee } = createMockPair(NETWORK_TESTNET);
+    const issuer = new InvoiceIssuer({
+      wallet: payee,
+      store: new MemoryInvoiceStore(),
+      secret: SECRET,
+    });
+
+    await expect(issuer.issueUsd("2.00")).rejects.toThrow(/no safe default/);
+  });
+
+  it("leaves a plain zatoshi invoice without a price block", async () => {
+    const { issuer } = usdIssuer(200);
+    const requirements = await issuer.issue("1000000");
+    expect(requirements.price).toBeUndefined();
+  });
+});

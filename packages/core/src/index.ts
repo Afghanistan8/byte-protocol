@@ -14,6 +14,7 @@ export * from "./invoice.js";
 export * from "./memo.js";
 export * from "./network.js";
 export * from "./pool.js";
+export * from "./price.js";
 export * from "./receipt.js";
 export * from "./store.js";
 export * from "./zip321.js";

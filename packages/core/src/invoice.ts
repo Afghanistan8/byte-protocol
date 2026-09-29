@@ -11,6 +11,7 @@ import { z } from "zod";
 import { isZat } from "./amount.js";
 import { isHex } from "./bytes.js";
 import { BYTE_SCHEME, NETWORKS } from "./network.js";
+import { isUsd } from "./price.js";
 import { BINDING_BYTES, INVOICE_ID_BYTES } from "./memo.js";
 
 const zatoshis = z
@@ -34,12 +35,43 @@ const txid = z.string().refine((v) => isHex(v, 32), "must be 64 lowercase hex ch
 
 const network = z.enum(NETWORKS);
 
+/**
+ * The quote a USD-priced invoice was locked at.
+ *
+ * Present only when a merchant priced in USD. Carried on the wire so a payer can see the
+ * rate they are being charged at and refuse one they disagree with — the alternative is
+ * a payer that must trust an amount with no way to sanity-check it.
+ *
+ * Purely informational to the verifier. Settlement is judged against `amount` alone; this
+ * is never re-derived, re-priced or re-checked. See `core/src/price.ts`.
+ */
+export const PriceQuoteSchema = z.object({
+  /** Decimal USD, at most two places. */
+  priceUsd: z.string().refine(isUsd, "must be decimal USD with at most two places"),
+  /** The USD-per-ZEC rate used. */
+  zecUsd: z.number().positive().finite(),
+  /** Which source, or sources, produced it. */
+  priceSource: z.string().min(1),
+  quotedAt: z.iso.datetime({ offset: true }),
+});
+
+export type PriceQuote = z.infer<typeof PriceQuoteSchema>;
+
 /** The payment requirements a payee sends with a 402. */
 export const BytePaymentRequirementsSchema = z.object({
   scheme: z.literal(BYTE_SCHEME),
   network,
   /** Zatoshis. A string, not a number. */
   amount: zatoshis,
+  /**
+   * The settlement asset. `ZEC` and only `ZEC`.
+   *
+   * A literal rather than an open string, on purpose. Zcash has no stablecoin and ZSAs
+   * are not on mainnet, so anything else arriving here means a peer is describing a chain
+   * Byte does not settle on. When ZSAs ship this becomes a union and the verifier learns
+   * to check an asset identifier against the note — that is a protocol change with a
+   * consensus dependency, not a field widening, and it stays **Planned** until then.
+   */
   asset: z.literal("ZEC"),
   /** A fresh diversified unified address, minted for this invoice alone. */
   payTo: z.string().min(1),
@@ -51,6 +83,8 @@ export const BytePaymentRequirementsSchema = z.object({
   /** A ZIP-321 URI encoding the same payment. */
   zip321: z.string().startsWith("zcash:"),
   facilitator: z.url().optional(),
+  /** Present only when the merchant priced in USD. */
+  price: PriceQuoteSchema.optional(),
 });
 
 export type BytePaymentRequirements = z.infer<typeof BytePaymentRequirementsSchema>;
@@ -85,6 +119,14 @@ export interface StoredInvoice {
   consumedAt?: number;
   /** The transaction that settled it, once known. */
   txid?: string;
+  /**
+   * The locked quote, when this invoice was priced in USD.
+   *
+   * Stored so the owner API and receipts can report what was charged in dollars, and so a
+   * dispute can be settled by pointing at the rate that was actually used rather than
+   * whatever the rate is now.
+   */
+  price?: PriceQuote;
   /** Opaque, caller-defined. Byte neither inspects nor transmits this. */
   metadata?: Record<string, unknown>;
 }

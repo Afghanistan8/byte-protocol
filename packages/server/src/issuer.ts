@@ -12,13 +12,17 @@ import {
   BYTE_SCHEME,
   buildZip321,
   encodeMemo,
+  isUsd,
   isZat,
   newInvoiceId,
   parseZat,
+  usdToZat,
   ByteProtocolError,
   type BytePaymentRequirements,
   type ByteNetwork,
   type InvoiceStore,
+  type PriceQuote,
+  type PriceSource,
   type StoredInvoice,
 } from "@byte-protocol/core";
 import type { ViewOnlyWallet } from "@byte-protocol/wallet";
@@ -44,6 +48,17 @@ export interface IssuerOptions {
   minConfirmations?: number;
   /** Optional facilitator URL to advertise. */
   facilitator?: string;
+  /**
+   * Where a USD price is converted to zatoshis.
+   *
+   * Required only for `issueUsd`. Without one, `issueUsd` throws rather than falling back
+   * to some default rate — there is no safe default for what a ZEC is worth.
+   *
+   * Wrap the real sources in a `GuardedPriceSource` from `@byte-protocol/pricing`: it is
+   * what enforces staleness and cross-source agreement, and a bare source enforces
+   * neither.
+   */
+  priceSource?: PriceSource;
   /** Injectable clock, for tests. */
   now?: () => number;
 }
@@ -57,6 +72,7 @@ export class InvoiceIssuer {
   readonly #ttlMs: number;
   readonly #minConfirmations: number;
   readonly #facilitator: string | undefined;
+  readonly #priceSource: PriceSource | undefined;
   readonly #now: () => number;
 
   constructor(options: IssuerOptions) {
@@ -78,6 +94,7 @@ export class InvoiceIssuer {
     this.#ttlMs = ttlMs;
     this.#minConfirmations = minConfirmations;
     this.#facilitator = options.facilitator;
+    this.#priceSource = options.priceSource;
     this.#now = options.now ?? Date.now;
   }
 
@@ -94,7 +111,7 @@ export class InvoiceIssuer {
    */
   async issue(
     amountZat: string,
-    options: { metadata?: Record<string, unknown> } = {},
+    options: { metadata?: Record<string, unknown>; price?: PriceQuote } = {},
   ): Promise<BytePaymentRequirements> {
     if (!isZat(amountZat)) {
       throw new ByteProtocolError(
@@ -122,6 +139,7 @@ export class InvoiceIssuer {
       expiresAt,
       createdAt,
       ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+      ...(options.price !== undefined ? { price: options.price } : {}),
     };
 
     await this.#store.put(stored);
@@ -138,6 +156,51 @@ export class InvoiceIssuer {
       memo,
       zip321: buildZip321({ address: payTo, amountZat, memo }),
       ...(this.#facilitator !== undefined ? { facilitator: this.#facilitator } : {}),
+      ...(options.price !== undefined ? { price: options.price } : {}),
     };
+  }
+
+  /**
+   * Mint an invoice denominated in USD, settled in ZEC.
+   *
+   * The rate is fetched **once**, converted to zatoshis, and locked into the invoice. It
+   * is never consulted again: `verify` judges the payment against `amountZat` alone.
+   *
+   * That means whoever holds the ZEC between this moment and cashing out carries the price
+   * risk, and Byte does not hedge it. The lever is the invoice TTL — a five-minute invoice
+   * carries five minutes of risk — and it is stated plainly in the README rather than
+   * buried.
+   *
+   * If the price source refuses — stale, or two sources disagreeing — this throws and no
+   * invoice is created. Issuing at a rate that could not be verified is the failure mode
+   * worth avoiding: an attacker who can freeze a feed can otherwise buy at yesterday's
+   * price indefinitely.
+   */
+  async issueUsd(
+    priceUsd: string,
+    options: { metadata?: Record<string, unknown> } = {},
+  ): Promise<BytePaymentRequirements> {
+    if (!isUsd(priceUsd)) {
+      throw new ByteProtocolError(
+        `price must be decimal USD with at most two places, got ${JSON.stringify(priceUsd)}`,
+      );
+    }
+    if (this.#priceSource === undefined) {
+      throw new ByteProtocolError(
+        "issueUsd needs a priceSource: there is no safe default for what a ZEC is worth",
+      );
+    }
+
+    const observed = await this.#priceSource.getZecUsd();
+    const amountZat = usdToZat(priceUsd, observed.price);
+
+    const price: PriceQuote = {
+      priceUsd,
+      zecUsd: observed.price,
+      priceSource: observed.source,
+      quotedAt: new Date(this.#now()).toISOString(),
+    };
+
+    return this.issue(amountZat, { ...options, price });
   }
 }

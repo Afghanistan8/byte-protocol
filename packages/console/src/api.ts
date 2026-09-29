@@ -16,7 +16,12 @@
  * There is no unauthenticated route, not even a health check.
  */
 
-import { timingSafeEqual, type InvoiceStore, type ReceiptStore } from "@byte-protocol/core";
+import {
+  timingSafeEqual,
+  type InvoiceStore,
+  type PriceSource,
+  type ReceiptStore,
+} from "@byte-protocol/core";
 import type { SpendGuard } from "@byte-protocol/client";
 import type { ViewOnlyWallet } from "@byte-protocol/wallet";
 
@@ -38,6 +43,13 @@ export interface ConsoleApiOptions {
   invoices: InvoiceStore;
   receipts?: ReceiptStore;
   guard?: SpendGuard;
+  /**
+   * The price source, so the console can report whether pricing is healthy.
+   *
+   * A merchant whose feed has quietly gone stale finds out when invoices stop being
+   * issued. `GET /price` is how they find out before that.
+   */
+  priceSource?: PriceSource;
   /** Bearer token. At least 32 characters. */
   token: string;
   /** Node name shown in the console header. */
@@ -102,6 +114,13 @@ export function createConsoleApi(options: ConsoleApiOptions) {
             .filter((i) => i.consumedAt !== undefined)
             .reduce((sum, i) => sum + BigInt(i.amountZat), 0n)
             .toString(10),
+          // Summed at the rates the invoices were locked at, not at today's rate. It is
+          // what was actually charged; re-pricing history would make the number move on
+          // its own every time someone refreshed the page.
+          settledUsd: invoices
+            .filter((i) => i.consumedAt !== undefined && i.price !== undefined)
+            .reduce((sum, i) => sum + Number(i.price?.priceUsd ?? 0), 0)
+            .toFixed(2),
           guard:
             options.guard === undefined
               ? null
@@ -157,6 +176,37 @@ export function createConsoleApi(options: ConsoleApiOptions) {
           body: {
             error: "unavailable",
             message: error instanceof Error ? error.message : String(error),
+          },
+        };
+      }
+    }
+
+    if (request.method === "GET" && path === "/price") {
+      if (options.priceSource === undefined) {
+        return { status: 404, body: { error: "price_source_not_configured" } };
+      }
+      try {
+        const price = await options.priceSource.getZecUsd();
+        return {
+          status: 200,
+          body: {
+            healthy: true,
+            ...price,
+            ageSeconds: price.timestamped
+              ? Math.round((Date.now() - price.at) / 1000)
+              : null,
+          },
+        };
+      } catch (error) {
+        // A refusing price source is reported as a 200 with `healthy: false`, not as a
+        // server error. The console is *working*; it is the feed that is not, and that
+        // distinction is the whole reason to look at this route.
+        return {
+          status: 200,
+          body: {
+            healthy: false,
+            sourceId: options.priceSource.sourceId,
+            error: error instanceof Error ? error.message : String(error),
           },
         };
       }

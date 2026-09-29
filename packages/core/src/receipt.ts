@@ -22,7 +22,16 @@ import type { ByteNetwork } from "./network.js";
  * other Byte structure that happened to serialize identically. Every signing context in
  * Byte commits to its own tag.
  */
-export const RECEIPT_DOMAIN = "byte-receipt-v1";
+/**
+ * Bumped from `v1` when receipts learned to carry the USD side of a priced invoice.
+ *
+ * The version is in the signed bytes, so a v1 signature cannot be replayed as a v2
+ * receipt and vice versa. That matters more than it looks: v2 appends two fields, and
+ * without a domain bump a v1 receipt would verify as a v2 receipt whose price fields
+ * happened to be empty — letting someone present an unpriced receipt as proof about a
+ * priced invoice.
+ */
+export const RECEIPT_DOMAIN = "byte-receipt-v2";
 
 export interface ReceiptBody {
   invoiceId: string;
@@ -33,6 +42,15 @@ export interface ReceiptBody {
   network: ByteNetwork;
   /** RFC 3339 UTC, when the payee accepted the payment. */
   timestamp: string;
+  /**
+   * What the merchant charged in USD, when the invoice was priced in USD.
+   *
+   * Settlement happened in ZEC — `amount` is the fact, this is the denomination. Both are
+   * signed, so a receipt cannot be presented with one of them altered.
+   */
+  priceUsd?: string;
+  /** The USD-per-ZEC rate the invoice was locked at. */
+  zecUsd?: number;
 }
 
 export interface ByteReceipt extends ReceiptBody {
@@ -60,6 +78,12 @@ export function canonicalReceiptBytes(body: ReceiptBody): Uint8Array {
     body.payTo,
     body.network,
     body.timestamp,
+    // Always present in the signed bytes, empty when the invoice was not priced in USD.
+    // Omitting an absent field instead would let two different receipts serialize
+    // identically, which is the field-boundary collision the null separator exists to
+    // prevent in the first place.
+    body.priceUsd ?? "",
+    body.zecUsd === undefined ? "" : String(body.zecUsd),
   ];
   for (const field of fields) {
     if (field.includes("\u0000")) {
@@ -111,6 +135,8 @@ export function verifyReceipt(receipt: unknown, expectedIssuer?: string): boolea
   for (const key of ["invoiceId", "txid", "amount", "payTo", "network", "timestamp"] as const) {
     if (typeof r[key] !== "string") return false;
   }
+  if (r.priceUsd !== undefined && typeof r.priceUsd !== "string") return false;
+  if (r.zecUsd !== undefined && typeof r.zecUsd !== "number") return false;
 
   try {
     return ed25519.verify(
@@ -121,4 +147,35 @@ export function verifyReceipt(receipt: unknown, expectedIssuer?: string): boolea
   } catch {
     return false;
   }
+}
+
+/**
+ * Build a receipt body from a settled invoice.
+ *
+ * Carries the USD denomination across automatically when the invoice had one. Left to
+ * each caller, the price fields are exactly the sort of thing that gets forgotten on one
+ * code path and then quietly missing from half the receipts.
+ */
+export function receiptBodyFor(
+  invoice: {
+    invoiceId: string;
+    amountZat: string;
+    payTo: string;
+    network: ByteNetwork;
+    price?: { priceUsd: string; zecUsd: number };
+  },
+  txid: string,
+  at: number = Date.now(),
+): ReceiptBody {
+  return {
+    invoiceId: invoice.invoiceId,
+    txid,
+    amount: invoice.amountZat,
+    payTo: invoice.payTo,
+    network: invoice.network,
+    timestamp: new Date(at).toISOString(),
+    ...(invoice.price !== undefined
+      ? { priceUsd: invoice.price.priceUsd, zecUsd: invoice.price.zecUsd }
+      : {}),
+  };
 }

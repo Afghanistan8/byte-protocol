@@ -3,6 +3,7 @@ import {
   canonicalReceiptBytes,
   newSigningKey,
   publicKeyOf,
+  receiptBodyFor,
   signReceipt,
   verifyReceipt,
 } from "./receipt.js";
@@ -88,7 +89,7 @@ describe("canonicalReceiptBytes", () => {
   });
 
   it("is domain-separated", () => {
-    expect(new TextDecoder().decode(canonicalReceiptBytes(body))).toMatch(/^byte-receipt-v1\u0000/);
+    expect(new TextDecoder().decode(canonicalReceiptBytes(body))).toMatch(/^byte-receipt-v2\u0000/);
   });
 
   it("refuses fields containing the separator", () => {
@@ -101,5 +102,92 @@ describe("canonicalReceiptBytes", () => {
     const a = canonicalReceiptBytes({ ...body, amount: "1", payTo: "23" });
     const b = canonicalReceiptBytes({ ...body, amount: "12", payTo: "3" });
     expect(a).not.toEqual(b);
+  });
+});
+
+describe("priced receipts", () => {
+  const priced: ReceiptBody = {
+    invoiceId: "a".repeat(32),
+    txid: "b".repeat(64),
+    amount: "1000000",
+    payTo: "utest1payee",
+    network: NETWORK_TESTNET,
+    timestamp: "2026-09-29T12:00:00.000Z",
+    priceUsd: "2.00",
+    zecUsd: 200,
+  };
+
+  it("signs and verifies the USD side along with the ZEC side", () => {
+    const { secretKey } = newSigningKey();
+    const receipt = signReceipt(secretKey, priced);
+
+    expect(verifyReceipt(receipt)).toBe(true);
+    expect(receipt.priceUsd).toBe("2.00");
+    expect(receipt.zecUsd).toBe(200);
+  });
+
+  it("refuses a receipt whose price was altered after signing", () => {
+    // The denomination is as much a claim as the amount. A receipt that could be
+    // re-denominated after the fact proves nothing about what was charged.
+    const { secretKey } = newSigningKey();
+    const receipt = signReceipt(secretKey, priced);
+
+    expect(verifyReceipt({ ...receipt, priceUsd: "200.00" })).toBe(false);
+    expect(verifyReceipt({ ...receipt, zecUsd: 2 })).toBe(false);
+  });
+
+  it("refuses a priced receipt with the price fields stripped", () => {
+    // Stripping must not silently downgrade it to a valid unpriced receipt.
+    const { secretKey } = newSigningKey();
+    const { priceUsd: _u, zecUsd: _z, ...stripped } = signReceipt(secretKey, priced);
+    void _u;
+    void _z;
+
+    expect(verifyReceipt(stripped)).toBe(false);
+  });
+
+  it("does not let an unpriced receipt pass as a priced one", () => {
+    const { secretKey } = newSigningKey();
+    const { priceUsd: _u, zecUsd: _z, ...unpricedBody } = priced;
+    void _u;
+    void _z;
+    const receipt = signReceipt(secretKey, unpricedBody);
+
+    expect(verifyReceipt(receipt)).toBe(true);
+    expect(verifyReceipt({ ...receipt, priceUsd: "2.00", zecUsd: 200 })).toBe(false);
+  });
+});
+
+describe("receiptBodyFor", () => {
+  it("carries the USD denomination across from a priced invoice", () => {
+    const body = receiptBodyFor(
+      {
+        invoiceId: "c".repeat(32),
+        amountZat: "1000000",
+        payTo: "utest1payee",
+        network: NETWORK_TESTNET,
+        price: { priceUsd: "2.00", zecUsd: 200 },
+      },
+      "d".repeat(64),
+      Date.parse("2026-09-29T12:00:00Z"),
+    );
+
+    expect(body).toMatchObject({ amount: "1000000", priceUsd: "2.00", zecUsd: 200 });
+    expect(body.timestamp).toBe("2026-09-29T12:00:00.000Z");
+  });
+
+  it("leaves the price fields absent on an unpriced invoice", () => {
+    const body = receiptBodyFor(
+      {
+        invoiceId: "c".repeat(32),
+        amountZat: "1000000",
+        payTo: "utest1payee",
+        network: NETWORK_TESTNET,
+      },
+      "d".repeat(64),
+    );
+
+    expect(body.priceUsd).toBeUndefined();
+    expect(body.zecUsd).toBeUndefined();
   });
 });
