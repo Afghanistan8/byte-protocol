@@ -7,8 +7,14 @@
  */
 
 import { bytesToHex, hexToBytes, utf8ToBytes, randomBytes } from "@noble/hashes/utils.js";
+import { sha256 } from "@noble/hashes/sha2.js";
 
-export { bytesToHex, hexToBytes, utf8ToBytes, randomBytes };
+export { bytesToHex, hexToBytes, utf8ToBytes, randomBytes, sha256 };
+
+/** SHA-256 of a UTF-8 string, as lowercase hex. */
+export function sha256Hex(text: string): string {
+  return bytesToHex(sha256(utf8ToBytes(text)));
+}
 
 const HEX_RE = /^[0-9a-f]*$/;
 
