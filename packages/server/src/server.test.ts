@@ -3,12 +3,14 @@ import {
   NETWORK_TESTNET,
   NU6_3_BRANCH_ID_HEX,
   NU7_BRANCH_ID_HEX,
+  newSigningKey,
+  verifyReceipt,
   ByteProtocolError,
   encodeMemo,
   parsePaymentRequirements,
   parseZip321,
 } from "@byte-protocol/core";
-import { MemoryInvoiceStore } from "@byte-protocol/stores";
+import { MemoryInvoiceStore, MemoryReceiptStore } from "@byte-protocol/stores";
 import { MockChain, MockWallet, createMockPair, viewOnly } from "@byte-protocol/wallet";
 import type { MockPair } from "@byte-protocol/wallet";
 import { InvoiceIssuer } from "./issuer.js";
@@ -540,5 +542,120 @@ describe("Retry-After follows the chain's consensus branch", () => {
 
     if (result.ok) throw new Error("unreachable");
     expect(result.retryAfterSeconds).toBe(75);
+  });
+});
+
+describe("receipts are issued at settlement", () => {
+  /**
+   * `signReceipt` was a tested library function that nothing ever called. No verifier,
+   * facilitator or adapter issued a receipt, and the console listed a store nothing filled,
+   * while the docs described receipts as the unit of selective disclosure. These tests
+   * exist so that stays a feature and not a sentence.
+   */
+  function receiptHarness(options: { failStore?: boolean; usd?: boolean } = {}) {
+    const pair = createMockPair(NETWORK_TESTNET);
+    pair.fundPayer("100000000");
+    const store = new MemoryInvoiceStore();
+    const receipts = new MemoryReceiptStore();
+    const { secretKey, publicKey } = newSigningKey();
+
+    if (options.failStore === true) {
+      vi.spyOn(receipts, "put").mockRejectedValue(new Error("disk full"));
+    }
+
+    const issuer = new InvoiceIssuer({
+      wallet: viewOnly(pair.payee),
+      store,
+      secret: SECRET,
+      ...(options.usd === true
+        ? {
+            priceSource: {
+              sourceId: "test",
+              getZecUsd: async () => ({ price: 200, source: "test", at: Date.now(), timestamped: true }),
+            },
+          }
+        : {}),
+    });
+    const verifier = new PaymentVerifier({
+      wallet: viewOnly(pair.payee),
+      store,
+      secret: SECRET,
+      receipts: { secretKey, store: receipts },
+    });
+    return { pair, issuer, verifier, receipts, publicKey };
+  }
+
+  async function settle(h: ReturnType<typeof receiptHarness>, invoice: Awaited<ReturnType<InvoiceIssuer["issue"]>>) {
+    const { txid } = await h.pair.payer.send({
+      to: invoice.payTo,
+      amountZat: invoice.amount,
+      memo: invoice.memo,
+    });
+    h.pair.chain.mine(1);
+    return { txid, result: await h.verifier.verify(invoice.invoiceId, txid) };
+  }
+
+  it("signs a receipt that verifies, and stores it", async () => {
+    const h = receiptHarness();
+    const invoice = await h.issuer.issue("100000");
+    const { txid, result } = await settle(h, invoice);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    expect(result.receipt).toBeDefined();
+    expect(verifyReceipt(result.receipt, h.publicKey)).toBe(true);
+    expect(result.receipt).toMatchObject({ invoiceId: invoice.invoiceId, txid, amount: "100000" });
+
+    // And it is retrievable later, which is what the console and reputation read.
+    expect(await h.receipts.get(invoice.invoiceId)).toEqual(result.receipt);
+  });
+
+  it("carries the USD denomination of a priced invoice", async () => {
+    const h = receiptHarness({ usd: true });
+    const invoice = await h.issuer.issueUsd("2.00");
+    const { result } = await settle(h, invoice);
+
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.receipt).toMatchObject({ priceUsd: "2.00", zecUsd: 200 });
+    expect(verifyReceipt(result.receipt)).toBe(true);
+  });
+
+  it("issues nothing when a payment is refused", async () => {
+    const h = receiptHarness();
+    const invoice = await h.issuer.issue("100000");
+    const result = await h.verifier.verify(invoice.invoiceId, "ab".repeat(32));
+
+    expect(result.ok).toBe(false);
+    expect(await h.receipts.get(invoice.invoiceId)).toBeUndefined();
+  });
+
+  it("still accepts the payment when the receipt store fails, and says so", async () => {
+    // By the time a receipt is written the invoice is consumed. Throwing here would strand
+    // a payer who has paid and cannot pay again, since their retry is refused as a replay.
+    const h = receiptHarness({ failStore: true });
+    const invoice = await h.issuer.issue("100000");
+    const { result } = await settle(h, invoice);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.receipt).toBeUndefined();
+    expect(result.receiptError).toMatch(/disk full/);
+  });
+
+  it("issues no receipt unless a verifier is configured to", async () => {
+    const h = harness();
+    const invoice = await h.issuer.issue("100000");
+    const { txid } = await h.pair.payer.send({
+      to: invoice.payTo,
+      amountZat: invoice.amount,
+      memo: invoice.memo,
+    });
+    h.pair.chain.mine(1);
+    const result = await h.verifier.verify(invoice.invoiceId, txid);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.receipt).toBeUndefined();
   });
 });

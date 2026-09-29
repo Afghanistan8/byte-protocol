@@ -13,11 +13,15 @@ import {
   BytePaymentError,
   isAcceptedPool,
   parseZat,
+  receiptBodyFor,
   retryAfterSeconds,
+  signReceipt,
   timingSafeEqual,
   verifyMemo,
+  type ByteReceipt,
   type InvoiceStore,
   type PaymentReason,
+  type ReceiptStore,
   type StoredInvoice,
 } from "@byte-protocol/core";
 import type { ReceivedNote, ViewOnlyWallet } from "@byte-protocol/wallet";
@@ -38,6 +42,19 @@ export interface VerifierOptions {
    * waving the payment through.
    */
   feeWallet?: ViewOnlyWallet;
+  /**
+   * Sign and store a receipt whenever a payment settles.
+   *
+   * **Off unless configured, and it used to be off unconditionally.** `signReceipt` was a
+   * tested library function that nothing ever called: no verifier, facilitator or adapter
+   * issued a receipt, and the console listed a receipt store that nothing filled. A
+   * receipt is the unit of selective disclosure and the raw material for reputation, so an
+   * unissued receipt is a feature that exists only in the README.
+   *
+   * `secretKey` is the payee's Ed25519 signing key. A facilitator verifying on a payee's
+   * behalf holds no such key and does not sign for it.
+   */
+  receipts?: { secretKey: Uint8Array; store: ReceiptStore };
   now?: () => number;
 }
 
@@ -47,6 +64,16 @@ export interface VerificationSuccess {
   /** The output that settled the invoice. */
   note: ReceivedNote;
   txid: string;
+  /** The signed receipt, when this verifier is configured to issue them. */
+  receipt?: ByteReceipt;
+  /**
+   * Why a configured receipt could not be issued or stored.
+   *
+   * The payment is still accepted. By the time a receipt is written the invoice is already
+   * consumed, so throwing here would strand a payer who has paid and cannot pay again:
+   * their retry would be refused as a replay. The failure is reported instead of raised.
+   */
+  receiptError?: string;
 }
 
 export interface VerificationFailure {
@@ -93,6 +120,7 @@ export class PaymentVerifier {
   readonly #store: InvoiceStore;
   readonly #secret: Uint8Array;
   readonly #feeWallet: ViewOnlyWallet | undefined;
+  readonly #receipts: { secretKey: Uint8Array; store: ReceiptStore } | undefined;
   readonly #now: () => number;
 
   constructor(options: VerifierOptions) {
@@ -100,6 +128,7 @@ export class PaymentVerifier {
     this.#store = options.store;
     this.#secret = options.secret;
     this.#feeWallet = options.feeWallet;
+    this.#receipts = options.receipts;
     this.#now = options.now ?? Date.now;
   }
 
@@ -201,8 +230,23 @@ export class PaymentVerifier {
       return fail("replay", "this invoice was paid concurrently");
     }
 
-    const settled = await this.#store.get(invoice.invoiceId);
-    return { ok: true, invoice: settled ?? invoice, note: settling, txid };
+    const settled = (await this.#store.get(invoice.invoiceId)) ?? invoice;
+    const success: VerificationSuccess = { ok: true, invoice: settled, note: settling, txid };
+
+    if (this.#receipts !== undefined) {
+      try {
+        const receipt = signReceipt(
+          this.#receipts.secretKey,
+          receiptBodyFor(settled, txid, this.#now()),
+        );
+        await this.#receipts.store.put(receipt);
+        success.receipt = receipt;
+      } catch (error) {
+        success.receiptError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    return success;
   }
 
   /**
