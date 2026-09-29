@@ -1,0 +1,30 @@
+{
+  "name": "byte-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A privacy layer for AI agent payments, settling in shielded Zcash",
+  "license": "MIT",
+  "author": "Asuzu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Afghanistan8/byte-protocol"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --build --force",
+    "clean": "pnpm -r exec rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "tsup": "^8.5.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.2"
+  },
+  "packageManager": "pnpm@12.6.0"
+}

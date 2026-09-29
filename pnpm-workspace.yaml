@@ -1,0 +1,8 @@
+packages:
+  - "packages/*"
+  - "packages/adapters/*"
+  - "packages/rails/*"
+  - "examples/*"
+allowBuilds:
+  # tsup bundles through esbuild, whose install script links the platform binary.
+  esbuild: true

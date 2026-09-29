@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+
+    // tsc owns the .d.ts files; tsup bundles the JavaScript. tsup's own `dts` option
+    // routes through rollup-plugin-dts, which vendors TypeScript 5.7 and cannot read
+    // TypeScript 7 output. Splitting the work avoids pinning the whole repo backwards.
+    "emitDeclarationOnly": true,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@byte-protocol/core",
+  "version": "0.1.0",
+  "description": "Scheme types, memo codec, ZIP-321, receipts and store interfaces for Byte Protocol",
+  "license": "MIT",
+  "author": "Asuzu",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b && tsup",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "zod": "^4.6.5"
+  }
+}
