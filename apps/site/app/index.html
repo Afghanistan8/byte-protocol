@@ -209,6 +209,7 @@
       <button data-page="dashboard" class="on"><span class="dot"></span>Dashboard</button>
       <button data-page="wallet"><span class="dot"></span>Wallet</button>
       <button data-page="agents"><span class="dot"></span>Agents</button>
+      <button data-page="about"><span class="dot"></span>About</button>
     </nav>
 
     <div class="foot">
@@ -352,6 +353,46 @@
     </section>
 
     <!-- --------------------------------------------------------------- agents -->
+    <section id="page-about" class="hide">
+      <div class="panel">
+        <header><h2>What is Byte?</h2></header>
+        <div class="body">
+          <p>
+            AI agents are starting to pay for things on their own. On most chains, every one
+            of those payments is public: what your agent buys, who it pays, what it holds.
+          </p>
+          <p>
+            <strong>Byte lets agents pay each other privately, using Zcash.</strong> The
+            amount, the people involved and the balances stay hidden. Only the two sides
+            know what happened.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><h2>How it works</h2></header>
+        <div class="body">
+          <p><strong>1. Ask.</strong> The seller says what it costs and gives a one-time address.</p>
+          <p><strong>2. Pay.</strong> The buyer's agent sends a private payment with a short code.</p>
+          <p><strong>3. Check.</strong> The seller confirms it arrived, then delivers.</p>
+          <p class="muted">
+            You set the limits: a cap per payment, a cap per day, and who the agent may pay.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header><h2>What stays visible</h2></header>
+        <div class="body">
+          <p>
+            That a private payment happened, and roughly when. Anything that goes through a
+            public step, like swapping in from another chain. Whatever an agent publishes
+            about itself. Built for a hackathon and not audited: no mainnet funds yet.
+          </p>
+        </div>
+      </div>
+    </section>
+
     <section id="page-agents" class="hide">
       <div class="panel">
         <header><h2>Resolve an agent</h2></header>
@@ -549,14 +590,14 @@
 
   /* ------------------------------------------------------------------- pages */
   function show(page) {
-    ["dashboard", "wallet", "agents"].forEach(function (p) {
+    ["dashboard", "wallet", "agents", "about"].forEach(function (p) {
       el("page-" + p).classList.toggle("hide", p !== page);
     });
     document.querySelectorAll("nav.side button").forEach(function (b) {
       b.classList.toggle("on", b.dataset.page === page);
     });
     el("title").textContent = page === "dashboard" ? "Dashboard"
-      : page === "wallet" ? "Wallet" : "Agents";
+      : page === "wallet" ? "Wallet" : page === "about" ? "About" : "Agents";
   }
 
   document.querySelectorAll("nav.side button").forEach(function (b) {
