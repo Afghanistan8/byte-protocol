@@ -17,19 +17,40 @@ address, or any balance.
 ## Status
 
 Hackathon-stage, built for the [ZECATHON](https://thezecathon.com/) in the Shielded Payments
-track. It has not been audited. Do not put mainnet funds behind it.
+track. It has not been audited, and I would not put money behind it that I minded losing.
 
-**It works on a real chain.** [docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md) records the first
-end-to-end payment, verifiable on any testnet explorer:
+**It works on mainnet.** Not only on testnet, and not only between two halves of my own code.
+[docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md) logs five runs; these are the two that carry the most
+weight, both on **Zcash mainnet** and verifiable on any explorer:
 
 ```
-txid   15a1ded9e252cfff784aae08add4a79b52424fc91bd304d96bcf41322e768369   the protocol
-txid   49ab740ba55117946e7af7097cdb4c0d86bbf0cbd3e33a6489f74565113aa712   through the x402 adapter
+txid   a6eb7a4e2845d16ffeaae78a672334c66754e8e809bc2d2861e453826ca35a94
+       Paid from a wallet I did not write, to a seller that verified it.
+       Two separate wallets. Repeated unattended by 488751f9…ec319324.
+
+txid   bf7f7ea4955f3dc8e22c23aca874a05906e85e5bc01c0a6342dc048ae315f6eb
+       A fee-carrying invoice: 50,000 zat to the payee with the binding memo,
+       1,250 zat of facilitator fee with none, one transaction.
 ```
 
-Read back through the API, both outputs — the payment and the change — report
-`"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
-issued.
+Every output in both reports `"pool": "ironwood"`, so nothing crossed a pool and ZIP 318
+revealed no net amount, and the memo read back off the chain is byte-identical to the one the
+payer's wallet displayed.
+
+The earlier testnet runs are still in the log, and still worth reading: run 1 found that a
+Zcash txid is byte-flipped when displayed, and run 2 found a payment loop that would have
+paid twice given more funds.
+
+**The mainnet run found something the other four could not.** Byte could not verify a payment
+from anyone else's wallet at all. A light wallet scans compact blocks, which omit memos by
+design; the memo arrives only if the wallet then downloads the whole transaction, and
+`byte-walletd` never did. Every payment it had ever verified was one it had also *sent*, so
+the memo was already in its own records. The defect was invisible for exactly as long as Byte
+was talking to itself. Nothing in <!--stats:total-->844<!--/stats--> tests could have caught
+it: the mock chain has no compact blocks, so its memos are simply present.
+
+That is the argument for real runs over a green suite, and it is why the limitations in this
+README are written as plainly as the claims.
 
 **<!--stats:total-->844<!--/stats--> tests pass**: <!--stats:ts-->778<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust.
 
@@ -207,7 +228,7 @@ not a reason about effort.
 
 **Byte's protocol fee is zero.** No output in any transaction pays me, and there is no
 treasury address. Not "free": the Zcash network fee still applies, and it goes to miners.
-The testnet run above paid 10,000 zatoshis under ZIP 317.
+The first testnet run paid 10,000 zatoshis under ZIP 317; the mainnet runs paid 15,000, which is what a transaction with two payment outputs and change costs.
 
 The one other fee that can exist is the optional facilitator fee below. It is separate from
 the protocol fee, off by default, and pays the facilitator rather than me.
@@ -279,7 +300,7 @@ decisions — refusals included, with their reasons. It renders nothing before i
 accepted, and loads nothing from anywhere else: a page reporting on a privacy protocol should
 not be fetching scripts from third parties who would then see every operator who opens it.
 
-For the sidecar and a real testnet payment, see
+For the sidecar and a real payment, see
 [crates/byte-walletd/.env.example](crates/byte-walletd/.env.example) and
 [docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md). With a funded wallet and the sidecar running:
 
@@ -288,8 +309,29 @@ BYTE_TESTNET=1 BYTE_WALLETD_TOKEN=... pnpm test:testnet
 ```
 
 That runs the whole protocol — x402 adapter, issuer, verifier, sidecar — against real Zcash
-testnet, and fails if any output lands outside Ironwood. It is gated behind `BYTE_TESTNET=1`
-because it spends real TAZ.
+testnet, and fails if any output lands outside Ironwood.
+
+```bash
+BYTE_TESTNET=1 BYTE_WALLETD_TOKEN=... pnpm seller
+```
+
+A real seller: it mints invoices, serves the dashboard from its own origin, and verifies
+settlements with its own viewing key. Open it and pay from any Zcash wallet. A wallet with a
+web API can be driven by the page; every other wallet pays the ZIP 321 request and you paste
+the transaction ID back, which the seller checks the same way. The invoice does not care
+which wallet paid it.
+
+```bash
+BYTE_TESTNET=1 BYTE_WALLETD_TOKEN=... pnpm run:fee
+```
+
+A fee-carrying invoice, settled in one transaction, checked against what the chain did.
+
+**Every one of these takes `BYTE_MAINNET=1` instead, and then spends real ZEC.** Mainnet is a
+separate opt-in rather than the absence of a testnet check: a guard reading "refuse unless
+testnet" becomes "allow anything" the moment someone deletes a line, and the diff looks
+harmless. Setting both is refused rather than resolved, since one of the two answers costs
+money.
 
 ---
 

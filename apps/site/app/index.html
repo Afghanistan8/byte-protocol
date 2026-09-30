@@ -354,8 +354,29 @@
       <div class="panel">
         <header>
           <h2>Zcash wallets</h2>
-          <span class="muted mono" style="font-size:11px">checked 2026-09-29</span>
+          <span class="muted mono" style="font-size:11px">checked 2026-09-30</span>
         </header>
+        <div class="body">
+          <div class="note warn">
+            <strong>A wallet having a web API is not the same as a wallet being reliable.</strong>
+            Noir is the only one here that a web page can drive directly, and it is the only
+            way this dashboard can send a payment for you. It is also, as of 30 September 2026,
+            shipping a <strong>v2.0.0 pre-release</strong>. Paying a real invoice with it took
+            most of a day: it refused to spend a note it had just received, its sync fell
+            further behind the chain between attempts so payments expired before they were
+            broadcast, and it does not inject into a page served from a numeric address.
+            Its own v1.0.37 notes name a fix for the first of those.
+            <br><br>
+            None of that is a reason to avoid Noir, and the mainnet payments in
+            <span class="mono">CHAIN_RUNS.md</span> were made with it. It is a reason not to
+            build on the assumption that a wallet API will be there. Every other wallet below
+            pays a <strong>ZIP-321 request</strong>, which is a standard and not a Byte
+            feature, and the seller verifies the result identically: the invoice does not care
+            which wallet paid it. If the extension route is fighting you, copy the request and
+            pay it anywhere.
+          </div>
+        </div>
+
         <div class="body" style="padding:0">
           <table>
             <thead>
@@ -544,13 +565,17 @@
   var state = { kind: null, walletd: null, viewingKey: null, noir: null };
 
   /* ------------------------------------------------------------- wallet data
-   * Researched 2026-09-29. "Connect from a web page" is the honest column: it asks
-   * whether a website can talk to the wallet, not whether the wallet is any good.
+   * Researched 2026-09-29, rechecked 2026-09-30 against Noir's release history.
+   *
+   * "Connect from a web page" is the honest column: it asks whether a website can talk to
+   * the wallet, not whether the wallet is any good. That distinction stopped being academic
+   * on 30 September, when the only wallet with a "yes" there turned out to be shipping a
+   * pre-release whose sync loses ground against the chain. The note above the table says so.
    */
   var WALLETS = [
     { name: "Noir", form: "Extension", ironwood: "yes",
-      since: "v1.0.26, 23 Jul 2026",
-      connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo." },
+      since: "v1.0.26, 23 Jul 2026; stable line ends at v1.0.37, 23 Sep 2026",
+      connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo. The shipping build is a v2.0.0 pre-release; see the note above the table." },
     { name: "Zodl", form: "Mobile", ironwood: "yes",
       since: "v3.8.0; Move to Ironwood in v3.9.0, 8 Aug 2026",
       connect: "no", how: "The February 2026 rebrand of Zashi. Pay by ZIP-321 URI." },
