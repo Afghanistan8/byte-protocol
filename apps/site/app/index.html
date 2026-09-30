@@ -286,21 +286,6 @@
 
     <!-- --------------------------------------------------------------- wallet -->
     <section id="page-wallet" class="hide">
-      <div class="panel">
-        <header>
-          <h2>Zcash wallets</h2>
-          <span class="muted mono" style="font-size:11px">checked 2026-09-29</span>
-        </header>
-        <div class="body" style="padding:0">
-          <table>
-            <thead>
-              <tr><th>Wallet</th><th>Form</th><th>Ironwood</th><th>Connect from a web page</th></tr>
-            </thead>
-            <tbody id="wallet-rows"></tbody>
-          </table>
-        </div>
-      </div>
-
       <div class="panel hide" id="noir-pay">
         <header><h2>Pay a Byte invoice</h2></header>
         <div class="body">
@@ -331,6 +316,21 @@
           <input type="text" id="noir-uri" placeholder="zcash:u1...?amount=0.001&amp;memo=QllURTF8..." spellcheck="false">
           <button class="btn small" id="noir-send" style="margin-top:11px">Review in Noir</button>
           <div id="noir-result" style="margin-top:14px"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <header>
+          <h2>Zcash wallets</h2>
+          <span class="muted mono" style="font-size:11px">checked 2026-09-29</span>
+        </header>
+        <div class="body" style="padding:0">
+          <table>
+            <thead>
+              <tr><th>Wallet</th><th>Form</th><th>Ironwood</th><th>Connect from a web page</th></tr>
+            </thead>
+            <tbody id="wallet-rows"></tbody>
+          </table>
         </div>
       </div>
 
@@ -702,6 +702,9 @@
         state.kind = "noir";
         state.noir = result || {};
         connected("Noir connected");
+        // Shown the moment Noir connects, not after the balance loads. A balance read that
+        // fails or is slow must not hide the very box you connected in order to use.
+        el("noir-pay").classList.remove("hide");
         note("Connected to Noir. Reading your balance&hellip;", "good");
         return refreshNoir();
       })
