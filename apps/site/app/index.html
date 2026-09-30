@@ -853,6 +853,25 @@
    * precisely and helps nobody. The original message is kept underneath.
    */
   function explainSendError(message) {
+    // Paying a mainnet address from a testnet wallet, or the reverse. Refused by the wallet,
+    // correctly: the coins would be lost. Worth saying plainly, because the raw text reads
+    // like a funds problem and sends people looking in the wrong place.
+    var net = /IncorrectNetwork\s*\{\s*expected:\s*(\w+),\s*actual:\s*(\w+)/.exec(message);
+    if (net !== null) {
+      var want = net[1] === "Test" ? "testnet" : "mainnet";
+      var got = net[2] === "Main" ? "mainnet" : "testnet";
+      return (
+        "<strong>Not sent: that address is on the wrong network.</strong><br>" +
+        "Your wallet is on " + want + ", but the address you pasted is a " + got + " address. " +
+        "Nothing was sent and no money moved.<br><br>" +
+        (want === "testnet"
+          ? "A testnet address starts with <strong>utest1</strong>. A mainnet one starts with " +
+            "<strong>u1</strong>. Ask the person receiving to open a <strong>testnet</strong> " +
+            "wallet and send you the address that starts with utest1."
+          : "A mainnet address starts with <strong>u1</strong>. Use one of those.") +
+        '<br><br><span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
+      );
+    }
     var m = /available:\s*Zatoshis\((\d+)\).*required:\s*Zatoshis\((\d+)\)/.exec(message);
     if (!/InsufficientFunds|insufficient/i.test(message) || m === null) {
       return "Not sent: " + escapeHtml(message);
