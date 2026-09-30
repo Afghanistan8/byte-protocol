@@ -232,6 +232,7 @@
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         <span id="conn-pill" class="tag no">Not connected</span>
         <button class="btn" id="connect">Connect Wallet</button>
+        <button class="btn ghost hide" id="disconnect">Disconnect</button>
       </div>
     </div>
 
@@ -293,6 +294,8 @@
 
     <!-- --------------------------------------------------------------- wallet -->
     <section id="page-wallet" class="hide">
+      <div id="noir-raw"></div>
+
       <div class="panel hide" id="noir-pay">
         <header><h2>Pay a Byte invoice</h2></header>
         <div class="body">
@@ -786,40 +789,121 @@
   }
 
   /**
-   * Read a ZEC amount from whatever Noir sends: a decimal string, a number, or missing.
-   * Returns zatoshis as a string, or null when there is nothing usable there.
+   * Find a balance field anywhere in a wallet's reply.
+   *
+   * Wallets disagree about the shape of a balance, and a reader that knows one shape
+   * reports zero for every other one. That is what this page did: it looked only at the
+   * top level for `spendable`, `shielded`, `transparent` and `total`, so a wallet that
+   * nests them under an account, or under the asset, showed a confident and wrong 0.
+   *
+   * So: walk the whole reply, depth first, and take the first key that matches. Objects
+   * named for another asset are skipped, because a multi-asset wallet reports BTC and ETH
+   * in the same reply and Byte must never read a BTC figure as ZEC.
    */
-  function amountToZat(value) {
-    if (value === undefined || value === null || value === "") return null;
-    if (typeof value === "number") {
-      if (!isFinite(value) || value < 0) return null;
-      // toFixed(8) rather than the number itself: 1e-7 would otherwise print as "1e-7".
-      value = value.toFixed(8);
-    }
-    return zecToZat(value);
+  var NOT_ZEC = /^(btc|bitcoin|eth|ethereum|usdc|usdt|sol|solana|near|bnb|matic|ltc|doge)$/i;
+
+  /** A key whose value is already in zatoshis rather than decimal ZEC. */
+  function keyIsZatoshis(key) {
+    return /(zat|zats|zatoshi|zatoshis)$/i.test(key);
   }
+
+  /**
+   * Reduce a key to the name it is really about, so one entry covers every spelling a
+   * wallet might use: `shielded`, `shieldedZat`, `shielded_zatoshis` and `shieldedBalance`
+   * all become "shielded". Matching against a fixed list of full spellings missed
+   * `shieldedZatoshis`, which is exactly the kind of near-miss that reports a wrong 0.
+   */
+  function normalizeKey(key) {
+    var name = String(key).toLowerCase().replace(/[\s_-]+/g, "");
+    var trimmed = name.replace(/(zatoshis|zatoshi|zats|zat)$/, "");
+    if (trimmed !== "") name = trimmed;
+    trimmed = name.replace(/(balance|amount|value)$/, "");
+    if (trimmed !== "") name = trimmed;
+    return name;
+  }
+
+  function findBalanceField(value, names, depth) {
+    if (value === null || typeof value !== "object" || (depth || 0) > 6) return null;
+
+    if (Array.isArray(value)) {
+      for (var i = 0; i < value.length; i += 1) {
+        var fromItem = findBalanceField(value[i], names, (depth || 0) + 1);
+        if (fromItem !== null) return fromItem;
+      }
+      return null;
+    }
+
+    var keys = Object.keys(value);
+    var k, j;
+    // Exact matches at this level first, so a nested object never beats the obvious field.
+    for (j = 0; j < keys.length; j += 1) {
+      k = keys[j];
+      if (names.indexOf(normalizeKey(k)) === -1) continue;
+      var raw = value[k];
+      if (typeof raw === "number" || (typeof raw === "string" && raw.trim() !== "")) {
+        return { key: k, value: raw };
+      }
+    }
+    for (j = 0; j < keys.length; j += 1) {
+      k = keys[j];
+      if (NOT_ZEC.test(k)) continue;
+      var nested = findBalanceField(value[k], names, (depth || 0) + 1);
+      if (nested !== null) return nested;
+    }
+    return null;
+  }
+
+  /**
+   * "0.001" -> "100000", or an already-zatoshi integer straight through. Returns null when
+   * there is nothing usable, and never guesses a unit from the size of the number: whether
+   * a figure is ZEC or zatoshis is decided by the name of the key it came under.
+   */
+  function amountToZat(found) {
+    if (found === null || found === undefined) return null;
+    var raw = found.value;
+    if (typeof raw === "number") {
+      if (!isFinite(raw) || raw < 0) return null;
+      // toFixed(8) rather than the number itself: 1e-7 would otherwise print as "1e-7".
+      raw = keyIsZatoshis(found.key) ? String(Math.round(raw)) : raw.toFixed(8);
+    }
+    raw = String(raw).trim();
+    if (keyIsZatoshis(found.key)) return /^\d+$/.test(raw) ? raw : null;
+    try { return zecToZat(raw); } catch (e) { return null; }
+  }
+
+  // Normalized names, so every zat/zatoshi/balance spelling of each is covered.
+  var SHIELDED_KEYS = ["spendable", "shielded", "available", "orchard", "ironwood"];
+  var TRANSPARENT_KEYS = ["transparent", "unshielded"];
+  var TOTAL_KEYS = ["total", "balance"];
 
   function refreshNoir() {
     return noirRequest("zcash_getBalance")
       .then(function (b) {
         // Shielded is what Byte can spend. Transparent is reported as unusable, because
         // moving it would cross pools and ZIP 318 makes that amount public.
-        var shielded = amountToZat(b && (b.spendable !== undefined ? b.spendable : b.shielded));
-        var transparent = amountToZat(b && b.transparent);
-        var total = amountToZat(b && b.total);
+        var shielded = amountToZat(findBalanceField(b, SHIELDED_KEYS, 0));
+        var transparent = amountToZat(findBalanceField(b, TRANSPARENT_KEYS, 0));
+        var total = amountToZat(findBalanceField(b, TOTAL_KEYS, 0));
 
-        // When Noir gives a total but no transparent figure, whatever the total holds beyond
-        // the shielded part is not spendable here. Derived, and only when it is unambiguous.
+        // When the wallet gives a total but no transparent figure, whatever the total holds
+        // beyond the shielded part is not spendable here. Derived only when unambiguous.
         if (transparent === null && total !== null && shielded !== null) {
           var rest = BigInt(total) - BigInt(shielded);
           transparent = (rest > 0n ? rest : 0n).toString(10);
         }
 
-        setStat("d-spendable", shielded === null ? "0" : shielded);
+        var readAnything = shielded !== null || transparent !== null || total !== null;
+        // A bare total is still worth showing, and is not evidence that nothing is spendable.
+        if (shielded === null && transparent === null) {
+          setStat("d-spendable", null);
+          setStat("d-unusable", null);
+        } else {
+          setStat("d-spendable", shielded === null ? "0" : shielded);
+          setStat("d-unusable", transparent === null ? "0" : transparent);
+        }
         setStat("d-pending", null);
-        setStat("d-unusable", transparent === null ? "0" : transparent);
         el("d-network").textContent = "via Noir";
-        el("d-height").textContent = "\u2014";
+        el("d-height").textContent = "—";
         el("d-height").className = "v muted";
         el("noir-pay").classList.remove("hide");
 
@@ -829,9 +913,27 @@
             " <strong>Your coins are transparent.</strong> Byte can only spend shielded coins, so " +
             "open Noir and press <strong>Shield Funds</strong> first, then wait for it to confirm.";
         }
-        note("Connected to Noir. Balance read." + hint + noirVersionWarning(),
-             noirVersionWarning() === "" ? "good" : "warn");
-        // Kept for anyone debugging a mismatch: exactly what Noir said, not what we made of it.
+
+        // Nothing recognised, yet the wallet clearly had something to say. Show exactly what
+        // it sent rather than a confident 0: the reader can then see their real figure, and
+        // the shape needed to fix this page ends up in the bug report instead of guessed at.
+        if (!readAnything) {
+          el("noir-raw").innerHTML =
+            '<div class="note warn"><strong>Connected, but this page could not read your ' +
+            "balance.</strong> Your wallet answered in a shape this page does not know. Your " +
+            "coins are fine, and you can still build and send a payment on the Wallet page. " +
+            "This is what your wallet sent:" +
+            '<pre style="white-space:pre-wrap;word-break:break-all;margin:10px 0 0">' +
+            escapeHtml(JSON.stringify(b, null, 2)) + "</pre></div>";
+          note("Connected. This page could not read your balance; see the box below." +
+               noirVersionWarning(), "warn");
+        } else {
+          el("noir-raw").innerHTML = "";
+          var warning = hint + noirVersionWarning();
+          note("Connected to Noir. Balance read." + warning, warning === "" ? "good" : "warn");
+        }
+        // Kept for anyone debugging a mismatch: exactly what the wallet said, not what we
+        // made of it.
         console.info("Noir zcash_getBalance:", b);
       })
       .catch(function (error) {
@@ -1222,6 +1324,7 @@
     pill.className = "tag ok";
     pill.textContent = labelText;
     el("connect").textContent = "Reconnect";
+    el("disconnect").classList.remove("hide");
     el("dash-banner").innerHTML =
       "<strong>Connected.</strong> " +
       (state.kind === "snap"
@@ -1230,6 +1333,37 @@
           ? "Connected to Noir. Shielded is what Byte can spend; transparent is shown as unusable, because moving it would cross pools and publish the amount."
           : "Reading live data from your wallet daemon.");
   }
+
+  /**
+   * Forget the wallet.
+   *
+   * This drops what the page holds and nothing else. A wallet extension decides for itself
+   * which sites it has granted access to, and exposes no method to hand that back, so the
+   * button says what it really does rather than implying a revocation it cannot perform.
+   */
+  el("disconnect").addEventListener("click", function () {
+    state.kind = null;
+    state.walletd = null;
+    state.viewingKey = null;
+    state.noir = null;
+
+    ["d-spendable", "d-pending", "d-unusable"].forEach(function (id) { setStat(id, null); });
+    el("d-network").textContent = "—";
+    el("d-height").textContent = "—";
+    el("d-height").className = "v muted";
+    el("noir-pay").classList.add("hide");
+    el("noir-raw").innerHTML = "";
+
+    var pill = el("conn-pill");
+    pill.className = "tag no";
+    pill.textContent = "Not connected";
+    el("connect").textContent = "Connect Wallet";
+    el("disconnect").classList.add("hide");
+    el("dash-banner").innerHTML =
+      "<strong>Disconnected.</strong> This page has forgotten your wallet and is holding " +
+      "no key, address or balance. Your wallet extension keeps its own list of sites it " +
+      "trusts: to take this site off that list, do it in the wallet’s own settings.";
+  });
 
   /* -------------------------------------------------------------- live data */
 

@@ -33,6 +33,9 @@ export default defineConfig({
       "packages/**/src/**/*.test.ts",
       "packages/**/test/**/*.test.ts",
       "scripts/**/*.test.ts",
+      // The dashboard is a hand-written page with no build step; its balance reader is
+      // extracted from the HTML and tested against the reply shapes wallets really send.
+      "apps/**/*.test.ts",
     ],
     environment: "node",
     reporters: ["default"],
