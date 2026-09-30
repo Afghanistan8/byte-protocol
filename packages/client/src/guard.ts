@@ -17,6 +17,7 @@
  */
 
 import { ByteProtocolError, BytePayerError, parseZat } from "@byte-protocol/core";
+import { MemoryAuditLog, type AuditLog } from "./audit.js";
 
 export interface SpendRequest {
   /** Zatoshis, canonical integer string. */
@@ -66,8 +67,23 @@ export interface SpendGuardOptions {
   allow?: string[];
   /** Must resolve true before any payment is authorized. */
   approve?: (request: SpendRequest) => boolean | Promise<boolean>;
-  /** How many audit entries to retain. Defaults to 1000. */
+  /**
+   * How many audit entries to retain in the default in-memory log. Defaults to 1000.
+   *
+   * Ignored when `auditLog` is supplied, which is the point of supplying one.
+   */
   auditLimit?: number;
+  /**
+   * Where decisions are recorded.
+   *
+   * Defaults to a bounded in-memory log, which is right for tests and short-lived processes
+   * and wrong for an agent spending real money: it drops the oldest entries silently and
+   * loses everything on restart, and the entries worth having are the old ones from the
+   * process that has since restarted.
+   *
+   * Pass a `FileAuditLog` for anything that matters.
+   */
+  auditLog?: AuditLog;
   /** Injectable clock, for tests. */
   now?: () => number;
 }
@@ -85,11 +101,10 @@ export class SpendGuard {
   readonly #maxDaily: bigint | undefined;
   readonly #allow: Set<string> | undefined;
   readonly #approve: SpendGuardOptions["approve"];
-  readonly #auditLimit: number;
+  readonly #auditLog: AuditLog;
   readonly #now: () => number;
 
   #charges: Charge[] = [];
-  #audit: AuditEntry[] = [];
 
   constructor(options: SpendGuardOptions = {}) {
     this.#maxPerCall =
@@ -101,7 +116,8 @@ export class SpendGuard {
         ? new Set(options.allow.map((h) => h.trim().toLowerCase()))
         : undefined;
     this.#approve = options.approve;
-    this.#auditLimit = options.auditLimit ?? DEFAULT_AUDIT_LIMIT;
+    this.#auditLog =
+      options.auditLog ?? new MemoryAuditLog(options.auditLimit ?? DEFAULT_AUDIT_LIMIT);
     this.#now = options.now ?? Date.now;
 
     if (this.#allow?.size === 0) {
@@ -205,9 +221,9 @@ export class SpendGuard {
     return this.#spentSince(this.#now() - DAY_MS).toString(10);
   }
 
-  /** Every decision, newest last. Denials included — that is the point. */
+  /** Every decision, oldest first. Denials included: that is the point. */
   auditLog(): readonly AuditEntry[] {
-    return this.#audit;
+    return this.#auditLog.entries();
   }
 
   /** Throw the payer-side error for a denial, for callers that prefer exceptions. */
@@ -224,10 +240,7 @@ export class SpendGuard {
   }
 
   #record(entry: AuditEntry): void {
-    this.#audit.push(entry);
-    if (this.#audit.length > this.#auditLimit) {
-      this.#audit.splice(0, this.#audit.length - this.#auditLimit);
-    }
+    this.#auditLog.record(entry);
   }
 }
 

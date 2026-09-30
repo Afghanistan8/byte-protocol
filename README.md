@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**<!--stats:total-->711<!--/stats--> tests pass**: <!--stats:ts-->649<!--/stats--> TypeScript, <!--stats:rust-->62<!--/stats--> Rust.
+**<!--stats:total-->724<!--/stats--> tests pass**: <!--stats:ts-->662<!--/stats--> TypeScript, <!--stats:rust-->62<!--/stats--> Rust.
 
 ---
 
@@ -162,7 +162,7 @@ cannot be granted by setting one variable too many.
 
 An autonomous agent with a spending key and a bug is a wallet-draining machine. The guard is
 evaluated before a transaction is built, so a denial costs nothing and leaves nothing on-chain:
-per-call cap, rolling 24-hour cap, host allowlist, approval hook, bounded audit log.
+per-call cap, rolling 24-hour cap, host allowlist, approval hook, audit log.
 
 Three decisions where the obvious implementation is wrong:
 
@@ -173,6 +173,11 @@ Three decisions where the obvious implementation is wrong:
   approval path into unlimited spending.
 - **An allowlist does not imply subdomains.** Allowing `example.com` must not allow
   `evil.example.com`.
+- **The audit log should outlive the process.** It defaulted to a bounded in-memory ring,
+  which dropped the oldest entries silently and lost everything on restart. The entries
+  worth having are the old ones, from the process that has since restarted. Pass a
+  `FileAuditLog` and decisions are appended to disk, one JSON object per line, with no
+  limit and no update path.
 
 ---
 

@@ -335,6 +335,16 @@ Payer-side, enforced before a transaction is constructed:
 The guard denies by default when a control is configured and unsatisfiable. A denied
 payment MUST NOT produce a transaction.
 
+The cap is charged at **authorization**, not at settlement. Counting only settled payments
+means a crash between the two loses the record, and a loop of crashing payments spends
+without limit.
+
+The audit log SHOULD be append-only and outlive the process. A denial leaves no trace on the
+chain by design, so the log is the only place it exists at all, and the entries an
+investigation wants are the old ones from before the restart. Byte defaults to a bounded
+in-memory log, which is appropriate for tests and wrong for an agent spending real money;
+`FileAuditLog` appends to disk, one JSON object per line, with no limit and no update path.
+
 ---
 
 ## 11. x402 v2 mapping

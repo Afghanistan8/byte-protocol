@@ -5,5 +5,6 @@
  */
 
 export * from "./guard.js";
+export * from "./audit.js";
 export * from "./payer.js";
 export * from "./fetch.js";
