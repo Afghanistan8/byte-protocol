@@ -246,6 +246,35 @@ impl WalletState {
             .map_err(WalletStateError::from)
     }
 
+    /// Build a PCZT for `outputs` rather than signing and broadcasting one.
+    ///
+    /// **Needs no spending key**, which is the whole point of the split: this half can run
+    /// where the decisions are made, and the key can live somewhere that never builds
+    /// anything. It does need a chain, because choosing which notes to spend means knowing
+    /// what the wallet holds.
+    pub async fn create_pczt(
+        &self,
+        outputs: &[SendOutput],
+    ) -> Result<(::pczt::Pczt, u64), WalletStateError> {
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        sender
+            .create_pczt_for(outputs)
+            .await
+            .map_err(WalletStateError::from)
+    }
+
+    /// Turn a signed and proved PCZT into a broadcast transaction.
+    ///
+    /// Also needs no spending key: by this point the signature is already in the PCZT, and
+    /// this end verifies the proof rather than trusting it.
+    pub async fn extract_pczt(&self, pczt: ::pczt::Pczt) -> Result<SendOutcome, WalletStateError> {
+        let sender = self.sender.as_ref().ok_or(WalletStateError::NoChain)?;
+        sender
+            .extract_and_broadcast(pczt)
+            .await
+            .map_err(WalletStateError::from)
+    }
+
     /// Sweep transparent value into Ironwood.
     ///
     /// One transaction per call. The delay-and-split policy lives in the client, where a

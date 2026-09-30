@@ -6,8 +6,8 @@ The point is not to look thorough. It is that a privacy protocol whose documenta
 disagree is worse than one that promises less — a reader who trusts a claim that the code does
 not honour is worse off than one who was told nothing.
 
-Run **2026-09-29**, against `main` with **<!--stats:total-->873<!--/stats--> tests passing**
-(<!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->73<!--/stats--> Rust). Those
+Run **2026-09-29**, against `main` with **<!--stats:total-->876<!--/stats--> tests passing**
+(<!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->76<!--/stats--> Rust). Those
 figures are written by `pnpm stats` from real runs of both suites into `docs/STATS.json`, and
 `scripts/stats-consistency.test.ts` fails if this file, the README or the site disagrees.
 

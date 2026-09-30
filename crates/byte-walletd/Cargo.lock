@@ -3021,6 +3021,7 @@ checksum = "2ef6dac1e96601b4fb3acccccff2139741fcb757cb9a36089bf5be91cfb285ce"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 
@@ -3279,13 +3280,16 @@ dependencies = [
  "nonempty",
  "orchard",
  "pasta_curves",
+ "pczt",
  "percent-encoding",
+ "postcard",
  "prost",
  "rand_core",
  "rayon",
  "sapling-crypto",
  "secp256k1",
  "secrecy 0.8.0",
+ "serde",
  "shardtree",
  "subtle",
  "time",
@@ -3336,6 +3340,7 @@ dependencies = [
  "schemerz-rusqlite",
  "secp256k1",
  "secrecy 0.8.0",
+ "serde",
  "shardtree",
  "static_assertions",
  "subtle",

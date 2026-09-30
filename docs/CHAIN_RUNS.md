@@ -15,6 +15,7 @@ invited exactly the wrong reading.
 | 3 | 2026-09-30 | **testnet** | A browser wallet can pay a Byte-format invoice. Wallet leg only |
 | 4 | 2026-09-30 | **MAINNET** | Two separate wallets, a real seller verifying, and the defect that made third-party payments impossible |
 | 5 | 2026-09-30 | **MAINNET** | A fee-carrying invoice settling in one transaction, both outputs |
+| 6 | 2026-09-30 | **MAINNET** | The split-signing round trip: built, reviewed, signed, proved and broadcast as a PCZT |
 
 ---
 
@@ -512,3 +513,67 @@ payment will ever change.
 The first version of that guard was itself wrong: it treated `pending` as a fault and
 aborted a healthy run. That cost nothing, because it aborted before spending, which is the
 entire argument for putting the check there.
+
+---
+
+## Run 6 · MAINNET · 2026-09-30 — a PCZT built, signed, proved and broadcast
+
+`docs/GAP_AUDIT.md` said, for as long as this repository has existed, that **no PCZT had been
+built, signed, proved and broadcast on a real chain**. It says so no longer.
+
+| | |
+|---|---|
+| Network | mainnet |
+| txid | `675fdde8fc7de2f3651f27bab4665d3e2c1f18acc88de29f38575b398e0cdc43` |
+| Command | `pnpm pczt:run` |
+| Fee | 10,000 zat |
+
+A PCZT is a transaction built in one place, authorized in another and broadcast from a third.
+Each stage can be tested alone; what matters is whether the stages agree, and only a real run
+answers that.
+
+```
+create   4,900 bytes   a PCZT from the same proposal /send builds      no key
+review                 read independently; matched the builder          no key
+sign     4,964 bytes   policy checked in full, then signed        ← the only stage with the key
+prove   12,230 bytes   the Ironwood proof added                         no key
+extract                proof verified, transaction rebuilt, broadcast   no key
+```
+
+**Four of the five stages need no spending key.** That is the whole point of the exercise: one
+machine can decide what to pay while another holds the key and does nothing but read a
+transaction and answer yes or no.
+
+The run checks six claims and all six held. The one worth naming is the cap: the signer was
+first offered a cap **one zatoshi under** the transaction's total and refused it, then the
+exact total and signed. A policy only ever tested with a passing value has not been tested,
+because it would look identical if it were never consulted.
+
+### The policy measures the wrong thing, and here is exactly why
+
+The first attempt at this run **failed, correctly**, and the failure is the more useful half.
+
+The allow list named the payee. The signer refused, because the transaction has two outputs:
+the 50,000 zat payment and 40,000 zat of **change** returning to the wallet. The signer saw an
+output nobody had authorized and stopped, which is the behaviour anyone would want.
+
+It also makes the allow list unusable. Change goes to an address minted per transaction, so a
+caller cannot name it in advance, and almost every real transaction has change. The same
+applies to `maxTotalZat`, which sums every output: a cap set to what you intend to *pay* will
+refuse, because the total includes what is coming back to you.
+
+The fix is to exempt change, and it cannot be written today. A PCZT output carries
+`zip32_derivation`, the field that says "the spending key for this output is at this path" and
+therefore marks it as the wallet's own. In `orchard` 0.15.5 that field is `pub(crate)` with no
+accessor, so a signer outside the crate cannot read it. Distinguishing change from a payment
+is not possible from where the signer stands.
+
+So the mechanism works — the run above demonstrates a cap being enforced on a real chain — and
+what it measures is not yet what a person means by it. That is written into `GAP_AUDIT.md` and
+`API.md` as well as here, and the feature stays `Partial`.
+
+### What this still does not prove
+
+Every stage ran against one sidecar, which is what one machine can demonstrate. It shows the
+stages agree. It does **not** show the key was ever somewhere the builder could not reach:
+splitting the process across two hosts is a deployment question, and nothing here answers it.

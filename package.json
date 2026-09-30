@@ -24,6 +24,7 @@
     "test:testnet": "tsx scripts/testnet-e2e.ts",
     "run:fee": "tsx scripts/fee-run.ts",
     "seller": "tsx scripts/seller.ts",
+    "pczt:run": "tsx scripts/pczt-run.ts",
     "stats": "tsx scripts/stats.ts",
     "gap-counts": "tsx scripts/gap-counts.ts",
     "site": "node -e \"const h=require('http'),f=require('fs');h.createServer((q,s)=>{s.writeHead(200,{'content-type':'text/html'});s.end(f.readFileSync('apps/site/index.html'))}).listen(4321,()=>console.log('http://127.0.0.1:4321'))\""

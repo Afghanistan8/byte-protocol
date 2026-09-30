@@ -43,6 +43,10 @@ impl ApiError {
     }
 }
 
+/// `Debug` so a test that unwraps one prints what went wrong. `ApiError` already derives
+/// it and neither field holds a secret: the code is a fixed string and the message is what
+/// the caller is about to be sent anyway.
+#[derive(Debug)]
 pub struct ApiFailure(StatusCode, ApiError);
 
 impl IntoResponse for ApiFailure {
@@ -259,6 +263,18 @@ pub struct PcztRequest {
     pub max_total_zat: Option<String>,
 }
 
+/// What a PCZT build costs, alongside the PCZT itself.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PcztCreated {
+    /// The PCZT, hex-encoded, ready to be reviewed and signed elsewhere.
+    pub pczt: String,
+    /// The network fee this proposal will pay, in zatoshis.
+    pub fee_zat: String,
+    /// What it pays and to whom, so the machine that builds need not be trusted to say.
+    pub review: crate::split_sign::SignReview,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PcztResponse {
@@ -302,9 +318,11 @@ pub fn router(state: AppState) -> Router {
         .route("/unshield", post(unshield))
         // The split signer. `review` needs no key and is safe for a view-only deployment;
         // `sign` needs the spending key and refuses without one.
+        .route("/pczt/create", post(pczt_create))
         .route("/pczt/review", post(pczt_review))
         .route("/pczt/sign", post(pczt_sign))
         .route("/pczt/prove", post(pczt_prove))
+        .route("/pczt/extract", post(pczt_extract))
         // 1 MiB. Every other route here is satisfied by a few hundred bytes and 64 KiB
         // was the limit for years, but a PCZT is a whole transaction plus the metadata a
         // signer needs, hex-encoded, and a legitimate one can exceed 64 KiB. The limit
@@ -539,6 +557,54 @@ fn policy_from(body: &PcztRequest) -> Result<crate::split_sign::SignPolicy, ApiF
     })
 }
 
+/// Build a PCZT for the given outputs, instead of signing and broadcasting one.
+///
+/// Needs no spending key. That is the split: the machine that decides what to pay builds
+/// the transaction, and the key lives somewhere that never builds anything.
+///
+/// Takes the same body as `/send`, so a caller moving from one to the other changes the URL
+/// and nothing else. The response includes the review, so the builder does not have to be
+/// trusted to describe what it built: whoever signs can read it themselves.
+async fn pczt_create(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<SendRequest>,
+) -> ApiResult<PcztCreated> {
+    authorize(&headers, &state.api_token)?;
+
+    let outputs = send_outputs_from(body)?;
+    let (pczt, fee_zat) = state.wallet.create_pczt(&outputs).await?;
+    let review = crate::split_sign::review(&pczt, state.wallet.network()).map_err(|e| {
+        ApiFailure(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiError::new("refused", e.to_string()),
+        )
+    })?;
+
+    Ok(Json(PcztCreated {
+        pczt: encode_pczt(pczt, "created")?,
+        fee_zat: fee_zat.to_string(),
+        review,
+    }))
+}
+
+/// Turn a signed and proved PCZT into a broadcast transaction.
+///
+/// The other end of the split, and it needs no spending key either: the signature is already
+/// in the PCZT, and this end verifies the proof rather than trusting it. Until the broadcast
+/// succeeds nothing has left the machine, so a failure here means the payment did not happen
+/// rather than that it happened and was lost.
+async fn pczt_extract(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PcztRequest>,
+) -> ApiResult<crate::chain::SendOutcome> {
+    authorize(&headers, &state.api_token)?;
+
+    let pczt = parse_pczt(&body.pczt)?;
+    Ok(Json(state.wallet.extract_pczt(pczt).await?))
+}
+
 /// Read what a PCZT would do, without signing it.
 ///
 /// Needs no key, so a view-only deployment can answer it. That is the point of separating
@@ -632,13 +698,12 @@ async fn pczt_prove(
     }))
 }
 
-async fn send(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(body): Json<SendRequest>,
-) -> ApiResult<crate::chain::SendOutcome> {
-    authorize(&headers, &state.api_token)?;
-
+/// Normalise a send body into outputs.
+///
+/// Shared by `/send` and `/pczt/create` so the two accept exactly the same request. A
+/// caller moving between them changes the URL and nothing else, and neither route can
+/// quietly grow a shape the other does not honour.
+fn send_outputs_from(body: SendRequest) -> Result<Vec<crate::chain::SendOutput>, ApiFailure> {
     let requested = match body.outputs {
         Some(outputs) => outputs,
         None => {
@@ -670,7 +735,17 @@ async fn send(
             memo: output.memo,
         });
     }
+    Ok(outputs)
+}
 
+async fn send(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<SendRequest>,
+) -> ApiResult<crate::chain::SendOutcome> {
+    authorize(&headers, &state.api_token)?;
+
+    let outputs = send_outputs_from(body)?;
     Ok(Json(state.wallet.send_many(&outputs).await?))
 }
 
@@ -722,11 +797,64 @@ mod tests {
     // signer will not apply.
 
     #[test]
-    fn a_pczt_that_is_not_hex_is_a_bad_request_and_says_so() {
-        let failure = match parse_pczt("not hex at all") {
-            Err(f) => f,
-            Ok(_) => panic!("non-hex input was accepted as a PCZT"),
+    fn send_and_pczt_create_accept_the_same_body() {
+        // They share `send_outputs_from` so this is true by construction, and asserted
+        // because the moment it stops being true a caller moving between the two routes
+        // gets a different transaction from the same request.
+        let single = SendRequest {
+            to: Some("u1abc".into()),
+            amount_zat: Some("50000".into()),
+            memo: Some("BYTE1|x|y".into()),
+            outputs: None,
         };
+        let parsed = send_outputs_from(single).expect("a single-output body parses");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].amount_zat, 50_000);
+        assert_eq!(parsed[0].memo.as_deref(), Some("BYTE1|x|y"));
+    }
+
+    #[test]
+    fn a_multi_output_body_keeps_every_output() {
+        // The fee leg is the second output, and dropping it would turn a fee-carrying
+        // invoice into a payment that silently skips the facilitator.
+        let body = SendRequest {
+            to: None,
+            amount_zat: None,
+            memo: None,
+            outputs: Some(vec![
+                SendOutputRequest {
+                    to: "u1payee".into(),
+                    amount_zat: "50000".into(),
+                    memo: Some("BYTE1|a|b".into()),
+                },
+                SendOutputRequest {
+                    to: "u1fee".into(),
+                    amount_zat: "1250".into(),
+                    memo: None,
+                },
+            ]),
+        };
+        let parsed = send_outputs_from(body).expect("a two-output body parses");
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[1].amount_zat, 1_250);
+        assert!(parsed[1].memo.is_none(), "the fee leg must carry no memo");
+    }
+
+    #[test]
+    fn a_body_with_neither_outputs_nor_to_is_refused() {
+        let body = SendRequest {
+            to: None,
+            amount_zat: None,
+            memo: None,
+            outputs: None,
+        };
+        let failure = send_outputs_from(body).expect_err("a body naming no recipient was accepted");
+        assert_eq!(failure.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn a_pczt_that_is_not_hex_is_a_bad_request_and_says_so() {
+        let failure = parse_pczt("not hex at all").expect_err("non-hex was accepted");
         assert_eq!(failure.0, StatusCode::BAD_REQUEST);
         assert!(failure.1.message.contains("valid hex"), "{:?}", failure.1);
     }
@@ -736,10 +864,7 @@ mod tests {
         // Distinguished from the above on purpose: "your encoding is wrong" and "your
         // encoding is right and the contents are not a PCZT" send a caller to different
         // places.
-        let failure = match parse_pczt("deadbeef") {
-            Err(f) => f,
-            Ok(_) => panic!("\"deadbeef\" was accepted as a PCZT"),
-        };
+        let failure = parse_pczt("deadbeef").expect_err("\"deadbeef\" was accepted");
         assert_eq!(failure.0, StatusCode::BAD_REQUEST);
         assert!(
             failure.1.message.contains("did not parse"),
@@ -771,10 +896,7 @@ mod tests {
             allow_recipients: vec![],
             max_total_zat: None,
         };
-        let policy = match policy_from(&body) {
-            Ok(p) => p,
-            Err(_) => panic!("an absent policy was rejected"),
-        };
+        let policy = policy_from(&body).expect("an absent policy is valid");
         assert!(policy.allow_recipients.is_empty());
         assert!(policy.max_total_zat.is_none());
     }
@@ -786,10 +908,7 @@ mod tests {
             allow_recipients: vec!["u1abc".into()],
             max_total_zat: Some("100000".into()),
         };
-        let policy = match policy_from(&body) {
-            Ok(p) => p,
-            Err(_) => panic!("a valid policy was rejected"),
-        };
+        let policy = policy_from(&body).expect("a valid policy parses");
         assert_eq!(policy.max_total_zat, Some(100_000));
         assert_eq!(policy.allow_recipients, vec!["u1abc".to_string()]);
     }

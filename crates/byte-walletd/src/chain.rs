@@ -365,6 +365,22 @@ fn open_wallet_db(network: Network, path: &Path) -> Result<ByteWalletDb, ChainEr
         .map_err(|e| ChainError::Db(e.to_string()))
 }
 
+/// The Ironwood circuit's verifying key, built once and reused.
+///
+/// `extract_and_store_transaction_from_pczt` checks the proof before it will hand back a
+/// transaction, which is the point: a PCZT arrives from another machine and this end should
+/// confirm it is sound rather than trust it. Building the key is expensive, so doing it per
+/// extraction would make every PCZT payment pay for it.
+///
+/// `PostNu6_3` is the Ironwood circuit. `FixedPostNu6_2` would verify against the wrong one.
+fn ironwood_verifying_key() -> &'static orchard::circuit::VerifyingKey {
+    use std::sync::OnceLock;
+    static VERIFYING_KEY: OnceLock<orchard::circuit::VerifyingKey> = OnceLock::new();
+    VERIFYING_KEY.get_or_init(|| {
+        orchard::circuit::VerifyingKey::build(orchard::circuit::OrchardCircuitVersion::PostNu6_3)
+    })
+}
+
 /// Download the full transactions the wallet has asked for, and store what they contain.
 ///
 /// # Why this exists, and what broke without it
@@ -1211,20 +1227,45 @@ impl LightwalletdChain {
     /// `memo` is optional only because a transparent output cannot carry one. Every Byte
     /// *payment* has a memo — it is what binds a note to an invoice — so the public
     /// `send` above requires it, and only `unshield` passes `None`.
-    async fn send_to(
+    /// The single account this wallet manages.
+    ///
+    /// byte-walletd is one account by design: `BYTE_WALLETD_ACCOUNT` picks which, and there
+    /// is never a second to choose between.
+    fn only_account(
         &self,
-        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        db: &ByteWalletDb,
+    ) -> Result<<ByteWalletDb as WalletRead>::AccountId, ChainError> {
+        Ok(*db
+            .get_account_ids()
+            .map_err(|e| ChainError::Db(e.to_string()))?
+            .first()
+            .ok_or_else(|| ChainError::Db("no account registered".into()))?)
+    }
+
+    /// Turn outputs into a checked proposal.
+    ///
+    /// Shared by the ordinary send path and the PCZT path on purpose. The Ironwood-only
+    /// spend policy, the Ironwood change strategy and `assert_ironwood_funded` are the one
+    /// property this whole protocol rests on, and a second copy of them would be a second
+    /// place for that property to drift. Whatever is true of a payment is true of a PCZT.
+    fn build_proposal(
+        db: &mut ByteWalletDb,
+        params: &consensus::Network,
+        account_id: &<ByteWalletDb as WalletRead>::AccountId,
         outputs: &[SendOutput],
-    ) -> Result<SendOutcome, ChainError> {
+    ) -> Result<
+        zcash_client_backend::proposal::Proposal<
+            zcash_client_backend::fees::StandardFeeRule,
+            <ByteWalletDb as zcash_client_backend::data_api::InputSource>::NoteRef,
+        >,
+        ChainError,
+    > {
         use zcash_client_backend::data_api::wallet::input_selection::{
             GreedyInputSelector, SpendPolicy,
         };
-        use zcash_client_backend::data_api::wallet::{
-            create_proposed_transactions, propose_transfer, SpendingKeys,
-        };
+        use zcash_client_backend::data_api::wallet::propose_transfer;
         use zcash_client_backend::fees::standard::SingleOutputChangeStrategy;
         use zcash_client_backend::fees::{DustOutputPolicy, StandardFeeRule};
-        use zcash_client_backend::wallet::OvkPolicy;
         use zcash_protocol::memo::MemoBytes;
 
         if outputs.is_empty() {
@@ -1232,15 +1273,6 @@ impl LightwalletdChain {
                 "a payment needs at least one output".into(),
             ));
         }
-
-        let params = self.network.params();
-        let mut db = self.open_db()?;
-
-        let account_id = *db
-            .get_account_ids()
-            .map_err(|e| ChainError::Db(e.to_string()))?
-            .first()
-            .ok_or_else(|| ChainError::Db("no account registered".into()))?;
 
         // One transaction request carrying every output.
         //
@@ -1296,9 +1328,9 @@ impl LightwalletdChain {
         // named explicitly: it is what zcash_client_sqlite's WalletCommitmentTrees uses.
         let proposal =
             propose_transfer::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
-                &mut db,
+                db,
                 &params,
-                account_id,
+                *account_id,
                 &input_selector,
                 &change_strategy,
                 request,
@@ -1314,6 +1346,112 @@ impl LightwalletdChain {
         // broadcast. Two independent checks on the one property the whole protocol rests on
         // is the right number.
         assert_ironwood_funded(&proposal)?;
+
+        Ok(proposal)
+    }
+
+    /// Build a PCZT for `outputs`, instead of signing and broadcasting one.
+    ///
+    /// The same proposal `send_to` would have built, stopped one step earlier. It goes
+    /// through `build_proposal`, so the Ironwood-only spend policy, the Ironwood change
+    /// strategy and the `assert_ironwood_funded` check are the same ones the ordinary send
+    /// path uses. A second copy of that logic here would be a second place for the one
+    /// property this protocol rests on to drift.
+    ///
+    /// **No spending key is involved.** That is the point: this half can run on the machine
+    /// that decides what to pay, and the key can live somewhere that never builds anything.
+    pub async fn create_pczt_for(
+        &self,
+        outputs: &[SendOutput],
+    ) -> Result<(::pczt::Pczt, u64), ChainError> {
+        use zcash_client_backend::data_api::wallet::create_pczt_from_proposal;
+        use zcash_client_backend::wallet::OvkPolicy;
+        use zcash_primitives::transaction::builder::BundlePadding;
+
+        let params = self.network.params();
+        let mut db = self.open_db()?;
+        let account_id = self.only_account(&db)?;
+        let proposal = Self::build_proposal(&mut db, &params, &account_id, outputs)?;
+        let fee_zat = u64::from(proposal.steps().last().balance().fee_required());
+
+        let pczt = create_pczt_from_proposal::<
+            _,
+            _,
+            std::convert::Infallible,
+            _,
+            std::convert::Infallible,
+            _,
+        >(
+            &mut db,
+            &params,
+            account_id,
+            // Sender, as in `send_to`: the outgoing viewing key is retained so this wallet
+            // can still read its own payment afterwards. A PCZT that could not be read back
+            // by its own sender would make the receipt path useless.
+            OvkPolicy::Sender,
+            &proposal,
+            None,
+            // DEFAULT, not UNPADDED: an unpadded bundle's action count reveals the
+            // transaction's shape, and the padding is the cheapest privacy there is.
+            BundlePadding::DEFAULT,
+        )
+        .map_err(|e| ChainError::Send(format!("building PCZT: {e:?}")))?;
+
+        Ok((pczt, fee_zat))
+    }
+
+    /// Turn a signed and proved PCZT back into a transaction, store it, and broadcast it.
+    ///
+    /// The other end of the split. Until the broadcast succeeds nothing has left the
+    /// machine, so a failure here means the payment did not happen rather than that it
+    /// happened and was lost.
+    pub async fn extract_and_broadcast(
+        &self,
+        pczt: ::pczt::Pczt,
+    ) -> Result<SendOutcome, ChainError> {
+        use zcash_client_backend::data_api::wallet::extract_and_store_transaction_from_pczt;
+
+        let mut db = self.open_db()?;
+
+        let txid = extract_and_store_transaction_from_pczt::<_, ()>(
+            &mut db,
+            pczt,
+            // No Sapling verifying key: Byte builds Ironwood-only transactions, so a
+            // Sapling bundle here is something this wallet did not build.
+            None,
+            Some(ironwood_verifying_key()),
+        )
+        .map_err(|e| ChainError::Send(format!("extracting transaction from PCZT: {e:?}")))?;
+
+        self.broadcast(&mut db, txid).await?;
+        tracing::info!(txid = %txid, "broadcast a PCZT-signed transaction");
+
+        Ok(SendOutcome {
+            txid: txid.to_string(),
+            // The fee is a property of the proposal, which this end of the split never saw.
+            // Reporting a guess would be worse than reporting nothing.
+            fee_zat: String::new(),
+        })
+    }
+
+    async fn send_to(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        outputs: &[SendOutput],
+    ) -> Result<SendOutcome, ChainError> {
+        use zcash_client_backend::data_api::wallet::{create_proposed_transactions, SpendingKeys};
+        use zcash_client_backend::wallet::OvkPolicy;
+
+        if outputs.is_empty() {
+            return Err(ChainError::Send(
+                "a payment needs at least one output".into(),
+            ));
+        }
+
+        let params = self.network.params();
+        let mut db = self.open_db()?;
+        let account_id = self.only_account(&db)?;
+        let proposal = Self::build_proposal(&mut db, &params, &account_id, outputs)?;
 
         let fee_zat = u64::from(proposal.steps().last().balance().fee_required());
 
