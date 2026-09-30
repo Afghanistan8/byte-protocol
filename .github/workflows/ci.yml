@@ -1,0 +1,155 @@
+# Continuous integration.
+#
+# ## This workflow has been removed twice, and why it is back
+#
+# Both earlier attempts failed at startup without running a single job, because they named
+# action versions that do not exist. An unresolvable action fails the run with "no jobs were
+# run", which reads like a YAML problem and is not one, and the second attempt referenced
+# `actions/checkout@v5` and `setup-node@v5` when the current major was already v7.
+#
+# Every ref below was resolved against the GitHub API before being written here, on
+# 2026-09-30, by asking for the tag or branch directly rather than trusting a memory of it:
+#
+#   actions/checkout@v7          tag exists (latest release v7.0.1)
+#   actions/setup-node@v7        tag exists (latest release v7.0.0)
+#   pnpm/action-setup@v6         tag exists (latest release v6.1.0)
+#   dtolnay/rust-toolchain@stable  branch exists
+#   Swatinem/rust-cache@v2       tag exists (latest release v2.9.2)
+#
+# It was also removed once for running the same commands that run locally before every
+# commit, which is a fair objection to a workflow that only repeats what a careful author
+# already does. What it adds is that it runs when the author is not careful, on a machine
+# that is not theirs, from a clean checkout. This repository ships a test count on its front
+# page; until now that number was a claim about one laptop.
+#
+# ## What this does not do
+#
+# It never spends money. The testnet and mainnet runs are gated behind BYTE_TESTNET=1 and
+# BYTE_MAINNET=1 and no job sets either, so nothing here can broadcast a transaction. The
+# live rail tests are likewise skipped, as they are locally.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # --frozen-lockfile on purpose: a lockfile that has drifted from package.json is
+      # exactly the kind of thing that works on the author's machine and nowhere else.
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      # The suite resolves packages to their source, so nothing in it ever loads dist. That
+      # is how a build shipping `import { DatabaseSync } from "sqlite"` passed every test:
+      # tsup strips the node: prefix, and node:sqlite has no bare alias, so the published
+      # package threw on import. Building here, and running the test that reads the emitted
+      # files, is what stops that returning.
+      - name: Build
+        run: pnpm build
+
+      - name: Check the built output
+        run: npx vitest run scripts/built-output.test.ts
+
+      # A last check that the packages load as published, in both formats, from their own
+      # directories rather than from the workspace root.
+      - name: Load every built package
+        run: |
+          set -e
+          for d in packages/*/ packages/*/*/; do
+            [ -f "$d/dist/index.js" ] || continue
+            name=$(node -e "console.log(require('./$d/package.json').name)")
+            ( cd "$d" && node --input-type=module -e "await import('./dist/index.js')" ) \
+              || { echo "::error::$name does not load from dist/index.js"; exit 1; }
+            ( cd "$d" && node -e "require('./dist/index.cjs')" ) \
+              || { echo "::error::$name does not load from dist/index.cjs"; exit 1; }
+            echo "ok $name"
+          done
+
+      # The end-to-end loop against the mock chain: issue, pay, replay, guard refusal.
+      - name: Demo
+        run: pnpm demo
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crates/byte-walletd
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates/byte-walletd
+
+      - name: Test
+        run: cargo test --lib
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Format
+        run: cargo fmt --check
+
+  docs:
+    name: Docs agree with the code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 12
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Not a formality. The counts on the README and the front page are generated from the
+      # suite, the gap audit's status counts are computed from its own rows, and both have
+      # been wrong before in ways a reader would have believed.
+      - name: Stats, counts and consistency
+        run: npx vitest run scripts/stats-consistency.test.ts scripts/summary-parsing.test.ts
+
+      - name: The gap audit adds up
+        run: |
+          pnpm gap-counts
+          git diff --exit-code docs/GAP_AUDIT.md \
+            || { echo "::error::docs/GAP_AUDIT.md status counts are stale. Run: pnpm gap-counts"; exit 1; }

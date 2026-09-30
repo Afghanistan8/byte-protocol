@@ -580,7 +580,9 @@ fn parse_txid(hex_txid: &str) -> Result<zcash_protocol::TxId, WalletStateError> 
 /// v6 is the Ironwood format (ZIP 229, still `Draft`); v5 is the NU5 format. Anything older
 /// is refused: v4 is disabled from NU7, and pre-v5 formats cannot express the pools Byte
 /// uses. The check is on the *built* transaction so it holds whatever the builder defaults to.
-fn assert_modern_version(version: zcash_primitives::transaction::TxVersion) -> Result<(), ChainError> {
+fn assert_modern_version(
+    version: zcash_primitives::transaction::TxVersion,
+) -> Result<(), ChainError> {
     use zcash_primitives::transaction::TxVersion;
     match version {
         TxVersion::V5 | TxVersion::V6 => Ok(()),
@@ -737,7 +739,10 @@ mod tests {
                 refusal.contains(pool_name(zcash_protocol::PoolType::Shielded(pool))),
                 "refusal should name the pool: {refusal}"
             );
-            assert!(refusal.contains("ZIP 318"), "refusal should cite why: {refusal}");
+            assert!(
+                refusal.contains("ZIP 318"),
+                "refusal should cite why: {refusal}"
+            );
         }
     }
 
@@ -761,8 +766,8 @@ mod tests {
 
         // Transparent wins the report even when a shielded input is also wrong: it is the
         // likelier mistake, and it publishes value that was never shielded at all.
-        let both = ironwood_only_refusal(2, [ShieldedPool::Sapling].into_iter())
-            .expect("must be refused");
+        let both =
+            ironwood_only_refusal(2, [ShieldedPool::Sapling].into_iter()).expect("must be refused");
         assert!(both.contains("2 transparent input(s)"), "{both}");
     }
 
@@ -772,7 +777,10 @@ mod tests {
         assert!(assert_modern_version(TxVersion::V5).is_ok());
         assert!(assert_modern_version(TxVersion::V6).is_ok());
         for old in [TxVersion::V3, TxVersion::V4, TxVersion::Sprout(1)] {
-            assert!(assert_modern_version(old).is_err(), "{old:?} must be refused");
+            assert!(
+                assert_modern_version(old).is_err(),
+                "{old:?} must be refused"
+            );
         }
     }
 
@@ -1023,6 +1031,7 @@ impl LightwalletdChain {
         from: Option<&[String]>,
         minimum_zat: Option<u64>,
     ) -> Result<Option<ShieldOutcome>, ChainError> {
+        use ::transparent::address::TransparentAddress;
         use zcash_client_backend::data_api::wallet::input_selection::GreedyInputSelector;
         use zcash_client_backend::data_api::wallet::{
             create_proposed_transactions, propose_shielding, SpendingKeys,
@@ -1031,7 +1040,6 @@ impl LightwalletdChain {
         use zcash_client_backend::fees::standard::SingleOutputChangeStrategy;
         use zcash_client_backend::fees::{DustOutputPolicy, StandardFeeRule};
         use zcash_client_backend::wallet::OvkPolicy;
-        use ::transparent::address::TransparentAddress;
 
         let params = self.network.params();
         let mut db = self.open_db()?;
@@ -1088,7 +1096,13 @@ impl LightwalletdChain {
             DustOutputPolicy::default(),
         );
 
-        let proposal = match propose_shielding::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
+        let proposal = match propose_shielding::<
+            _,
+            _,
+            _,
+            _,
+            zcash_client_sqlite::wallet::commitment_tree::Error,
+        >(
             &mut db,
             &params,
             &input_selector,
@@ -1107,7 +1121,9 @@ impl LightwalletdChain {
                 if message.contains("Insufficient") || message.contains("insufficient") {
                     return Ok(None);
                 }
-                return Err(ChainError::Send(format!("building shielding proposal: {message}")));
+                return Err(ChainError::Send(format!(
+                    "building shielding proposal: {message}"
+                )));
             }
         };
 
@@ -1195,7 +1211,11 @@ impl LightwalletdChain {
     /// `memo` is optional only because a transparent output cannot carry one. Every Byte
     /// *payment* has a memo — it is what binds a note to an invoice — so the public
     /// `send` above requires it, and only `unshield` passes `None`.
-    async fn send_to(&self, usk: &zcash_keys::keys::UnifiedSpendingKey, outputs: &[SendOutput]) -> Result<SendOutcome, ChainError> {
+    async fn send_to(
+        &self,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        outputs: &[SendOutput],
+    ) -> Result<SendOutcome, ChainError> {
         use zcash_client_backend::data_api::wallet::input_selection::{
             GreedyInputSelector, SpendPolicy,
         };
@@ -1208,7 +1228,9 @@ impl LightwalletdChain {
         use zcash_protocol::memo::MemoBytes;
 
         if outputs.is_empty() {
-            return Err(ChainError::Send("a payment needs at least one output".into()));
+            return Err(ChainError::Send(
+                "a payment needs at least one output".into(),
+            ));
         }
 
         let params = self.network.params();
@@ -1228,8 +1250,10 @@ impl LightwalletdChain {
         // could not give across two broadcasts.
         let mut payments = Vec::with_capacity(outputs.len());
         for output in outputs {
-            let recipient = zcash_address::ZcashAddress::try_from_encoded(&output.to)
-                .map_err(|e| ChainError::Send(format!("could not parse address {}: {e}", output.to)))?;
+            let recipient =
+                zcash_address::ZcashAddress::try_from_encoded(&output.to).map_err(|e| {
+                    ChainError::Send(format!("could not parse address {}: {e}", output.to))
+                })?;
 
             let amount = Zatoshis::from_u64(output.amount_zat)
                 .map_err(|e| ChainError::Send(format!("invalid amount: {e:?}")))?;
@@ -1270,19 +1294,20 @@ impl LightwalletdChain {
 
         // The commitment-tree error type cannot be inferred from the arguments, so it is
         // named explicitly: it is what zcash_client_sqlite's WalletCommitmentTrees uses.
-        let proposal = propose_transfer::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
-            &mut db,
-            &params,
-            account_id,
-            &input_selector,
-            &change_strategy,
-            request,
-            ConfirmationsPolicy::MIN,
-            &spend_policy,
-            None,
-            None,
-        )
-        .map_err(|e| ChainError::Send(format!("building proposal: {e}")))?;
+        let proposal =
+            propose_transfer::<_, _, _, _, zcash_client_sqlite::wallet::commitment_tree::Error>(
+                &mut db,
+                &params,
+                account_id,
+                &input_selector,
+                &change_strategy,
+                request,
+                ConfirmationsPolicy::MIN,
+                &spend_policy,
+                None,
+                None,
+            )
+            .map_err(|e| ChainError::Send(format!("building proposal: {e}")))?;
 
         // Belt and braces, and cheap. The selector was told Ironwood only; this confirms
         // the proposal it produced honours that, before anything is proved, signed or

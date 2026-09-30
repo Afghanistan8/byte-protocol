@@ -52,7 +52,11 @@ it: the mock chain has no compact blocks, so its memos are simply present.
 That is the argument for real runs over a green suite, and it is why the limitations in this
 README are written as plainly as the claims.
 
-**<!--stats:total-->866<!--/stats--> tests pass**: <!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust.
+**<!--stats:total-->866<!--/stats--> tests pass**: <!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust. They run on
+every push, on a clean checkout of a machine that is not mine, along with the build, a check
+that every package actually loads as published, the end-to-end demo, clippy, rustfmt, and a
+check that the counts in this file still match the suite. No CI job can spend money: the
+chain runs are gated behind flags nothing here sets.
 
 ---
 

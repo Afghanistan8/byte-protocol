@@ -360,6 +360,9 @@ importers:
         specifier: workspace:*
         version: link:../wallet
     devDependencies:
+      '@byte-protocol/client':
+        specifier: workspace:*
+        version: link:../client
       '@byte-protocol/stores':
         specifier: workspace:*
         version: link:../stores
@@ -384,6 +387,9 @@ importers:
       '@byte-protocol/rails':
         specifier: workspace:*
         version: link:../interface
+      '@byte-protocol/wallet':
+        specifier: workspace:*
+        version: link:../../wallet
 
   packages/registry:
     dependencies:

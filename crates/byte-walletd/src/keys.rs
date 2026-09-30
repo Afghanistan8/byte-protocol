@@ -415,8 +415,14 @@ mod tests {
         let ufvk = v.ufvk().encode(&v.network().params());
 
         assert_ne!(uivk, ufvk);
-        assert!(uivk.starts_with("uivktest"), "unexpected UIVK encoding: {uivk}");
-        assert!(ufvk.starts_with("uviewtest"), "unexpected UFVK encoding: {ufvk}");
+        assert!(
+            uivk.starts_with("uivktest"),
+            "unexpected UIVK encoding: {uivk}"
+        );
+        assert!(
+            ufvk.starts_with("uviewtest"),
+            "unexpected UFVK encoding: {ufvk}"
+        );
     }
 
     #[test]

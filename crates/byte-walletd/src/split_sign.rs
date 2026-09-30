@@ -121,7 +121,9 @@ pub fn review(pczt: &Pczt, network: crate::keys::Network) -> Result<SignReview, 
     // The pool rule, applied on the side that holds the key. The direct send path enforces
     // it too; enforcing it here is what makes it survive a compromised builder.
     if !pczt.transparent().inputs().is_empty() || !pczt.transparent().outputs().is_empty() {
-        return Err(SignRefusal::WrongPool { pool: "transparent" });
+        return Err(SignRefusal::WrongPool {
+            pool: "transparent",
+        });
     }
     if !pczt.sapling().spends().is_empty() || !pczt.sapling().outputs().is_empty() {
         return Err(SignRefusal::WrongPool { pool: "sapling" });
@@ -320,7 +322,10 @@ mod tests {
         let msg = SignRefusal::OverCap { total: 10, cap: 5 }.to_string();
         assert!(msg.contains("10") && msg.contains("5"), "{msg}");
 
-        let msg = SignRefusal::RecipientNotAllowed { recipient: "u1x".into() }.to_string();
+        let msg = SignRefusal::RecipientNotAllowed {
+            recipient: "u1x".into(),
+        }
+        .to_string();
         assert!(msg.contains("u1x") && msg.contains("allow list"), "{msg}");
 
         let msg = SignRefusal::WrongPool { pool: "sapling" }.to_string();
