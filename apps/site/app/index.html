@@ -848,11 +848,38 @@
   /**
    * Turn Noir's raw error into something a person can act on.
    *
+   * Each branch names what actually went wrong and what to do about it; anything not
+   * recognised is passed through unchanged rather than guessed at.
+   *
    * The commonest failure by far is a wallet with nothing spendable yet, and the raw text
    * ("InsufficientFunds { available: Zatoshis(0), required: Zatoshis(110000) }") says so
    * precisely and helps nobody. The original message is kept underneath.
    */
   function explainSendError(message) {
+    // The wallet stamps every transaction with an expiry height, and the network rejects one
+    // that arrives after it. Seeing this means Noir built the payment against a block it
+    // thought was current and the real chain had already moved past the expiry, which is a
+    // wallet that has fallen behind, not anything wrong with the payment or the address.
+    var exp = /Height\((\d+)\)\s*greater than its expiry Height\((\d+)\)/.exec(message);
+    if (exp !== null) {
+      var behind = Number(exp[1]) - Number(exp[2]);
+      return (
+        "<strong>Not sent: the payment expired before it reached the network.</strong><br>" +
+        "Nothing was sent and no money moved. You can try again.<br><br>" +
+        "Every Zcash payment carries a deadline, counted in blocks. Your wallet set this " +
+        "one's deadline from the last block it knew about, and the real chain was already " +
+        behind + " blocks past it. That means <strong>Noir has fallen behind and is still " +
+        "catching up with the network</strong>.<br><br>" +
+        "<strong>What to do:</strong><br>" +
+        "1. Open Noir and leave it open until it stops showing that it is syncing or " +
+        "scanning. On testnet that can take a few minutes.<br>" +
+        "2. Come back here and press <strong>Review in Noir</strong> again.<br><br>" +
+        "If it keeps happening, close and reopen the extension to make it reconnect, then " +
+        "wait for it to finish catching up before sending." +
+        '<br><br><span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
+      );
+    }
+
     // Paying a mainnet address from a testnet wallet, or the reverse. Refused by the wallet,
     // correctly: the coins would be lost. Worth saying plainly, because the raw text reads
     // like a funds problem and sends people looking in the wrong place.
