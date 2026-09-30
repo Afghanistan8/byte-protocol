@@ -151,7 +151,16 @@ async function main(): Promise<void> {
     ttlMs: 30 * 60 * 1000,
     facilitatorFee: { bps: FEE_BPS, payTo: feeAddress },
   });
-  const verifier = new PaymentVerifier({ wallet, store, secret });
+  // `feeWallet` is what lets the verifier confirm the fee leg actually arrived. Without
+  // it, a fee-carrying invoice is refused outright rather than waved through, which is the
+  // right behaviour and which this script fell foul of on its first real run: it paid, and
+  // only then discovered it could not check its own work.
+  //
+  // Here it is the same wallet, because this script mints the fee address from the wallet
+  // it pays with. A real facilitator holds its own key and would pass a different one:
+  // seeing the payee's invoice outputs and seeing your own fee output are two viewing keys,
+  // not one.
+  const verifier = new PaymentVerifier({ wallet, store, secret, feeWallet: wallet });
 
   const expectedFee = feeZatFor(PRICE_ZAT, { bps: FEE_BPS, payTo: feeAddress });
   const invoice = await issuer.issue(PRICE_ZAT);
@@ -171,6 +180,20 @@ async function main(): Promise<void> {
   if (invoice.payTo === invoice.fee.payTo) {
     // Two legs to one address would collapse into a single output and prove nothing.
     throw new Error("the fee address matched the payee address; this run would prove nothing");
+  }
+
+  // Check the verifier can do its job BEFORE any money moves. A script that spends and
+  // then finds it cannot verify has burned a real payment to learn about its own wiring.
+  //
+  // The probe uses a txid that cannot exist, so every healthy answer is a refusal: `pending`
+  // for a transaction the chain has not seen, or `invalid_payment`. Neither is interesting.
+  // The one answer worth stopping for is the verifier saying it lacks a viewing key, because
+  // that is a statement about its own wiring and no payment will ever change it.
+  const probe = await verifier.verify(invoice.invoiceId, "00".repeat(32));
+  if (!probe.ok && /viewing key/.test(probe.message)) {
+    throw new Error(
+      `refusing to spend: the verifier could not check this invoice even in principle. ${probe.message}`,
+    );
   }
 
   step(3, "Pay it — one transaction, two outputs");

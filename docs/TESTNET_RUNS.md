@@ -401,3 +401,81 @@ and the seller settled the invoice that had been failing for twenty minutes.
 Only a wallet that Byte did not write, paying it over a real light-client connection, could
 expose this. That is the argument for this run, and it is worth more than the run's own
 result.
+
+---
+
+## 2026-09-30 — a fee-carrying invoice, settled in one transaction, on mainnet
+
+The last claim in this repository that rested on mock tests alone. Byte's facilitator fee is
+a **second output on the same transaction**, not a separate payment, and that shape had never
+touched a real chain.
+
+It mattered because the same feature had already been broken once in a way the suite could
+not see: the issuer produced fee-carrying invoices, the verifier checked them, and Byte's own
+client could not pay a two-output invoice at all. Every test passed, because both sides were
+mocked and agreed with each other.
+
+| | |
+|---|---|
+| Network | mainnet |
+| txid | `bf7f7ea4955f3dc8e22c23aca874a05906e85e5bc01c0a6342dc048ae315f6eb` |
+| Invoice | `aa6e350071be3738aeb280a196294bfd` |
+| Payee owed | 50,000 zat |
+| Facilitator fee | 1,250 zat at **250 bps (2.5%)** |
+| Network fee | 15,000 zat (ZIP 317) |
+| Time to verification | 379s |
+
+The ZIP 321 request handed to the payer, in its indexed multi-payment form:
+
+```
+zcash:u1ey6xued…?amount=0.0005&memo=QllURTF8…&address.1=u1jhlkz7n…&amount.1=0.0000125
+```
+
+Read back off the chain:
+
+```
+ironwood     50000 zat  1 conf  BYTE1|aa6e350071be3738aeb280a196294bfd|4aab40727ac2890c1beb08fad8bca14f
+ironwood     17500 zat  1 conf  (no memo)
+ironwood      1250 zat  1 conf  (no memo)
+```
+
+Six claims, each checked against what the chain did rather than what the script hoped:
+
+| Claim | Evidence |
+|---|---|
+| Settled in one transaction | 3 outputs, all under one txid |
+| The payee leg carries the binding memo | 50,000 zat with `BYTE1\|aa6e3500…` |
+| The fee leg carries none | 1,250 zat, no memo. A memo there would be a second place an invoice identifier could leak to a third party |
+| The fee matches the published rate | 250 bps of 50,000 is 1,250 |
+| Every output is in Ironwood | 3 outputs, no pool crossed, nothing revealed under ZIP 318 |
+| The verifier accepts it | Checked the amount, the memo **and** that the fee arrived |
+
+**Limitation, as the script prints it:** the fee is enforced by the facilitator's
+verification and by nothing else. Zcash has no contracts, so a payer who pays the payee
+directly and skips the facilitator skips the fee. This shows the transaction shape, not an
+enforcement Byte does not have. Both roles also ran against one wallet, so it shows the
+shape and not two parties; the mainnet run above is what shows two parties.
+
+### Two attempts, and what the first one cost
+
+The first attempt paid, then failed to verify:
+
+```
+this invoice carries a facilitator fee, but the verifier has no viewing key for the
+fee address and therefore cannot confirm the fee was paid
+```
+
+The verifier was right. Seeing a payee's invoice outputs and seeing your own fee output are
+two viewing keys, not one, and a verifier that cannot check a fee refuses rather than waving
+the payment through. The script had simply never passed `feeWallet`. 66,250 zatoshis moved
+to establish that.
+
+So the script now asks the verifier whether it could check this invoice **before** any money
+moves. The probe uses a txid that cannot exist, where every healthy answer is a refusal —
+`pending`, or `invalid_payment` — and the single answer worth stopping for is the verifier
+saying it lacks a viewing key, because that is a statement about its own wiring that no
+payment will ever change.
+
+The first version of that guard was itself wrong: it treated `pending` as a fault and
+aborted a healthy run. That cost nothing, because it aborted before spending, which is the
+entire argument for putting the check there.
