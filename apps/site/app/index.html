@@ -796,12 +796,38 @@
           "</span></div>";
       })
       .catch(function (error) {
-        out.innerHTML =
-          '<div class="note bad">Not sent: ' +
-          escapeHtml(error && error.message ? error.message : "unknown error") +
-          "</div>";
+        var message = error && error.message ? error.message : "unknown error";
+        out.innerHTML = '<div class="note bad">' + explainSendError(message) + "</div>";
       });
   });
+
+  /**
+   * Turn Noir's raw error into something a person can act on.
+   *
+   * The commonest failure by far is a wallet with nothing spendable yet, and the raw text
+   * ("InsufficientFunds { available: Zatoshis(0), required: Zatoshis(110000) }") says so
+   * precisely and helps nobody. The original message is kept underneath.
+   */
+  function explainSendError(message) {
+    var m = /available:\s*Zatoshis\((\d+)\).*required:\s*Zatoshis\((\d+)\)/.exec(message);
+    if (!/InsufficientFunds|insufficient/i.test(message) || m === null) {
+      return "Not sent: " + escapeHtml(message);
+    }
+    var have = Number(m[1]) / 1e8;
+    var need = Number(m[2]) / 1e8;
+    return (
+      "<strong>Not sent: your wallet has no spendable ZEC yet.</strong><br>" +
+      "It can spend " + have + " ZEC and this payment needs " + need +
+      " ZEC (the amount plus the network fee).<br><br>" +
+      "<strong>Check these, in order:</strong><br>" +
+      "1. <strong>Are the coins there?</strong> Open Noir and look at the balance.<br>" +
+      "2. <strong>Are they confirmed?</strong> New coins take a few minutes. Wait, then try again.<br>" +
+      "3. <strong>Are they shielded?</strong> Coins sitting in a transparent address cannot " +
+      "be spent here. Byte only spends shielded coins, so shield them in Noir first.<br>" +
+      "4. <strong>Right network?</strong> The faucet coins and this wallet must both be testnet.<br><br>" +
+      '<span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
+    );
+  }
 
   /* ------------------------------------------------------------ practice invoice */
 
