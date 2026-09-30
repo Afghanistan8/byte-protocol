@@ -435,6 +435,21 @@ fn parse_txid(hex_txid: &str) -> Result<zcash_protocol::TxId, WalletStateError> 
     Ok(zcash_protocol::TxId::from_bytes(array))
 }
 
+/// Only v5 and v6 transactions may be broadcast.
+///
+/// v6 is the Ironwood format (ZIP 229, still `Draft`); v5 is the NU5 format. Anything older
+/// is refused: v4 is disabled from NU7, and pre-v5 formats cannot express the pools Byte
+/// uses. The check is on the *built* transaction so it holds whatever the builder defaults to.
+fn assert_modern_version(version: zcash_primitives::transaction::TxVersion) -> Result<(), ChainError> {
+    use zcash_primitives::transaction::TxVersion;
+    match version {
+        TxVersion::V5 | TxVersion::V6 => Ok(()),
+        other => Err(ChainError::Send(format!(
+            "refusing to broadcast a {other:?} transaction; Byte builds v5 or v6 only"
+        ))),
+    }
+}
+
 /// Decode a transparent address, refusing anything else by name.
 ///
 /// A shielded or unified address passed here is a caller mistake worth naming: shielding
@@ -609,6 +624,16 @@ mod tests {
         let both = ironwood_only_refusal(2, [ShieldedPool::Sapling].into_iter())
             .expect("must be refused");
         assert!(both.contains("2 transparent input(s)"), "{both}");
+    }
+
+    #[test]
+    fn only_v5_and_v6_transactions_may_be_broadcast() {
+        use zcash_primitives::transaction::TxVersion;
+        assert!(assert_modern_version(TxVersion::V5).is_ok());
+        assert!(assert_modern_version(TxVersion::V6).is_ok());
+        for old in [TxVersion::V3, TxVersion::V4, TxVersion::Sprout(1)] {
+            assert!(assert_modern_version(old).is_err(), "{old:?} must be refused");
+        }
     }
 
     #[test]
@@ -801,6 +826,12 @@ impl LightwalletdChain {
             .ok_or_else(|| {
                 ChainError::Send("built transaction is missing from the wallet".into())
             })?;
+
+        // Refuse to broadcast an old transaction format. v4 is disabled by NU7, and a v4
+        // transaction cannot carry an Ironwood bundle at all, so one arriving here means
+        // something upstream built the wrong thing. Checked on the built transaction rather
+        // than assumed from the builder's default, because that default is what could change.
+        assert_modern_version(raw.version())?;
 
         let mut bytes = Vec::new();
         raw.write(&mut bytes)
