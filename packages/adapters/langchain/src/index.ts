@@ -6,3 +6,4 @@
  */
 
 export * from "./tools.js";
+export * from "./treasury.js";

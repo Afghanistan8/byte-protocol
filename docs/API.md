@@ -300,6 +300,27 @@ is configured.
 Single invoice (404 if unknown), signed receipts, and the live balance. `/api/balance`
 returns `503 unavailable` rather than zeroes when the wallet cannot answer.
 
+### `GET /api/price`
+
+Whether pricing is healthy. A refusing feed answers **200** with `healthy: false`, not 500:
+the console is working, the feed is not.
+
+```json
+{ "healthy": true, "price": 1399.8, "source": "near-intents+kraken", "at": 1790718000000,
+  "timestamped": true, "ageSeconds": 31 }
+```
+```json
+{ "healthy": false, "sourceId": "near-intents", "error": "last published 600s ago, over the 120s limit" }
+```
+
+`ageSeconds` is `null` for an untimestamped source such as Kraken, which reports no
+publication time. 404 when no price source is configured.
+
+### `GET /api/agent-card`
+
+The owner's own signed Agent Card, so an owner can check what
+`/.well-known/byte-agent.json` says. 404 when none is configured.
+
 ### `GET /api/guard`
 
 Newest first, **refusals included with their reason** — an operator needs to know why a

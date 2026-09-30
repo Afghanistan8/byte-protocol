@@ -50,6 +50,14 @@ export interface ConsoleApiOptions {
    * issued. `GET /price` is how they find out before that.
    */
   priceSource?: PriceSource;
+  /**
+   * The agent's own signed card, for the owner to see what is being published.
+   *
+   * Served from the owner API only. The card is public by design at
+   * `/.well-known/byte-agent.json`; this route exists so an owner can check what that
+   * endpoint says without leaving the console.
+   */
+  agentCard?: unknown;
   /** Bearer token. At least 32 characters. */
   token: string;
   /** Node name shown in the console header. */
@@ -210,6 +218,12 @@ export function createConsoleApi(options: ConsoleApiOptions) {
           },
         };
       }
+    }
+
+    if (request.method === "GET" && path === "/agent-card") {
+      return options.agentCard === undefined
+        ? { status: 404, body: { error: "agent_card_not_configured" } }
+        : { status: 200, body: options.agentCard };
     }
 
     if (request.method === "GET" && path === "/guard") {

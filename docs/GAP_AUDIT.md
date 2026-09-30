@@ -26,10 +26,10 @@ disagreed with a brief, I followed the source and said so.
 <!--gap-counts-->
 | Status | Count |
 |--------|------:|
-| `Done` | 74 |
-| `Partial` | 12 |
-| `Missing` | 55 |
-| `Not feasible yet` | 4 |
+| `Done` | 98 |
+| `Partial` | 11 |
+| `Missing` | 31 |
+| `Not feasible yet` | 5 |
 | **Total sub-items** | **145** |
 <!--/gap-counts-->
 
@@ -108,10 +108,10 @@ disagreed with a brief, I followed the source and said so.
 | Verified with a view-only key | `Done` | `state.rs` `from_ufvk`; facilitator refuses a spender | `facilitator.test.ts` | — |
 | Verifier sees the exact amount | `Done` | `verifier.ts` | `server.test.ts` | — |
 | Replay protection via atomic `consume` | `Done` | `core/src/store.ts`; `stores/src/memory.ts` | `memory.test.ts` concurrency case | Memory only: see the next row |
-| Durable store | `Missing` | — | — | A restart re-opens the replay window (B2). Needs Asuzu to choose SQLite or Redis |
-| Signed Ed25519 receipts, issued at settlement | `Partial` | `core/src/receipt.ts`; `verifier.ts` `receipts` option | `receipt.test.ts` (21); `server.test.ts` receipts (5) | The gates do not hand the receipt back to the payer (B7) |
+| Durable store | `Done` | `stores/src/sqlite.ts` `createSqliteStores` on `node:sqlite`; `consume` is one conditional `UPDATE` | `stores/src/contract.test.ts` (40, one suite over both stores, incl. 20 concurrent claims and a restart) | Single process, single file. Several processes sharing a payee want Redis, not built |
+| Signed Ed25519 receipts, issued at settlement | `Partial` | `core/src/receipt.ts`; `verifier.ts` `receipts` option | `receipt.test.ts` (21); `server.test.ts` receipts (5) | The x402, MCP and A2A gates do not yet hand the receipt back in the response |
 | Per-transaction disclosure | `Not feasible yet` | — | — | ZIP 311 "Zcash Payment Disclosures" is `Draft`; ZIP 303 is `Withdrawn` |
-| Scoped incoming-viewing-key export | `Missing` | `GET /viewing-key` returns the full UFVK | — | B3 |
+| Scoped incoming-viewing-key export | `Done` | `keys.rs` `export_uivk`; `GET /viewing-key` returns `uivk` and `ufvk`; `walletd.ts` `incomingViewingKey` | `keys.rs` (2); `walletd.test.ts` "viewing keys" (3) | "Scoped" is a misnomer and the docs say so: no key can be scoped to a subset of payments or revoked. SECURITY §5.7 |
 
 ## F6: Delegation and spend limits
 
@@ -121,8 +121,8 @@ disagreed with a brief, I followed the source and said so.
 | Rolling daily cap | `Done` | `guard.ts` | `guard.test.ts` | — |
 | Per-host allowlist | `Done` | `guard.ts` | `guard.test.ts` | — |
 | Approval hook | `Done` | `guard.ts` | `guard.test.ts` | — |
-| Append-only, persistent audit log | `Partial` | `guard.ts` bounded in-memory ring | `guard.test.ts` | Lossy, not append-only, lost on restart (B4) |
-| Split build/sign with PCZT | `Missing` | `pczt` is transitive only | — | B4. Feasible: librustzcash #2524 is closed |
+| Append-only, persistent audit log | `Done` | `client/src/audit.ts` `FileAuditLog` (append flag, no update or delete path) | `audit.test.ts` (13) incl. restart, crash-truncated line, failed write | Append-only against the program, not tamper-proof against someone with filesystem access |
+| Split build/sign with PCZT | `Partial` | `byte-walletd/src/split_sign.rs`: `review`, `sign` (policy checked in full before any signature), `prove` | `split_sign.rs` tests (3): empty PCZT refused, refusal reasons, default policy | **No HTTP route, and no PCZT has been built, proved, signed and broadcast on a real chain.** The crate does not expose a spend's value, so only what is paid can be audited, not what is spent. The MetaMask snap claim stays removed |
 | Threshold custody with FROST | `Not feasible yet` | — | — | See F7 Mode A |
 | Never described as "on-chain allowances" | `Done` | — | Grep finds none | — |
 
@@ -131,7 +131,7 @@ disagreed with a brief, I followed the source and said so.
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
 | Mode A: shielded 2-of-3 FROST | `Not feasible yet` | — | — | `ZcashFoundation/frost` workspace has no Pallas or re-randomized Orchard ciphersuite (`frost-core`, `ed25519`, `ed448`, `p256`, `ristretto255`, `secp256k1`, `secp256k1-tr`, `rerandomized`); `reddsa` 0.6.1 has no FROST module |
-| Mode B: transparent 2-of-3 P2SH | `Missing` | — | — | B5, labelled non-private |
+| Mode B: transparent 2-of-3 P2SH | `Not feasible yet` | — | — | **Deliberately not built** (Asuzu's decision): it publishes amounts and all three addresses. Reasoning in ROADMAP |
 | Job state machine | `Missing` | — | — | B5 |
 | Timeouts | `Missing` | — | — | B5 |
 | `JobStore` | `Missing` | — | — | B5 |
@@ -147,11 +147,11 @@ disagreed with a brief, I followed the source and said so.
 | Signed Agent Card | `Done` | `registry/src/card.ts` | `card.test.ts` (27) | — |
 | Served at `/.well-known/byte-agent.json` | `Done` | `WELL_KNOWN_PATH`; legacy path still resolves on a 404 | `card.test.ts` fallback (3) | — |
 | Card fields | `Partial` | `AgentCardBodySchema` | `card.test.ts` | `endpoint` is singular, not a list |
-| A2A agent-card extension | `Missing` | — | — | B6 |
-| Reputation from signed receipts | `Missing` | — | — | B6. Receipts are now issued (A9) |
-| Signed feedback type | `Missing` | — | — | B6 |
-| Merkle-root anchoring in a shielded self-send | `Missing` | — | — | B6 |
-| Documented: anchor private by default | `Missing` | — | — | B6 |
+| A2A agent-card extension | `Done` | `registry/src/a2a.ts` `toA2AExtension`, `fromA2AExtensions` | `identity.test.ts` A2A (7) | — |
+| Reputation from signed receipts | `Done` | `registry/src/reputation.ts` `computeReputation` | `identity.test.ts` reputation (7) | Cannot prove absence; no Sybil resistance. Both stated |
+| Signed feedback type | `Done` | `reputation.ts` `signFeedback`, `verifyFeedback` | `identity.test.ts` feedback (4) | — |
+| Merkle-root anchoring in a shielded self-send | `Partial` | `registry/src/anchor.ts` builds the tree, proves inclusion and builds the memo | `identity.test.ts` merkle (7) incl. the second-preimage case | **The self-send itself is not wired**: nothing broadcasts the anchor transaction |
+| Documented: anchor private by default | `Done` | `anchor.ts` header | — | — |
 | Public OP_RETURN-style anchor | `Missing` | — | — | B6. Verify it is standard on Zcash before offering |
 
 ## F9: NEAR Intents, in and out
@@ -162,33 +162,33 @@ disagreed with a brief, I followed the source and said so.
 |------|--------|----------------|---------------------|----------------|
 | `GET /tokens` → ZEC asset | `Done` | `rails/near-intents/src/rail.ts` | `rail.test.ts` | — |
 | `POST /quote` EXACT_OUTPUT | `Done` | `rail.ts` `quote` | `rail.test.ts` (10) | — |
-| `confidentiality: "basic"` sent explicitly | `Missing` | — | — | B1. The API default is `public` |
+| `confidentiality` sent explicitly | `Done` | `rail.ts` sends `basic` with a JWT, `public` without, and says which | `cashout.test.ts` "confidentiality" (5); live test | **Correction:** `basic` also needs a JWT (`401` otherwise). Found by the live test |
 | `dry: true` works against the real shape | `Done` | `rail.ts`, `rails/interface` `depositAddress?` | `rail.test.ts` "survives a dry response that omits the deposit address" | Not run live |
-| `POST /deposit/submit` | `Missing` | — | — | B1 |
+| `POST /deposit/submit` | `Done` | `rail.ts` `submitDeposit` | `cashout.test.ts` "submitting a deposit" (2) | Not run live |
 | Poll `GET /status` | `Done` | `rail.ts` `status` | `rail.test.ts` all seven statuses | — |
-| Auto-shield on `SUCCESS` | `Missing` | — | — | B1. The auto-shielder exists (F3) |
-| Fresh transparent recipient per quote | `Missing` | — | — | B1. Currently one fixed address |
+| Auto-shield on `SUCCESS` | `Done` | `rail.ts` `settle` | `cashout.test.ts` "settling a funding" (3) | `settle` shields the wallet's whole transparent balance, not only the funded address |
+| Fresh transparent recipient per quote | `Done` | `rail.ts` `#recipientAddress`; `ShieldingWallet.newTransparentAddress`; `POST /transparent-addresses` | `cashout.test.ts` (3) | The sidecar route compiles but is not exercised against a synced wallet |
 
 ### Cash out
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Quote with ZEC as `originAsset` | `Missing` | — | — | B1 |
-| Wallet sends from Ironwood to the deposit address | `Missing` | — | — | B1 |
-| Deposit address validated before sending | `Missing` | — | — | B1 |
-| Fresh `refundTo`, refunds auto-shielded | `Missing` | — | — | B1 |
+| Quote with ZEC as `originAsset` | `Done` | `rail.ts` `cashOutQuote` (`EXACT_INPUT`) | `cashout.test.ts` "cashing out" (4); live dry quote | Not run non-dry |
+| Wallet sends from Ironwood to the deposit address | `Done` | `rail.ts` `payCashOut` via `unshield` | `cashout.test.ts` "paying a cash-out" (6) | Mock only. Not on a real chain |
+| Deposit address validated before sending | `Done` | `payCashOut` | `cashout.test.ts` | — |
+| Fresh `refundTo`, refunds auto-shielded | `Partial` | `cashOutQuote` mints a fresh refund address | `cashout.test.ts` | Nothing yet sweeps that address after a `REFUNDED` status |
 | Status tracking | `Partial` | `status()` is direction-agnostic | `rail.test.ts` | Reusable as-is |
 
 ### Both directions
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Quote and status signature verification | `Missing` | — | — | B1. The quote response carries a `signature`; nothing verifies it |
+| Quote signature verification | `Done` | `rails/near-intents/src/quote-signature.ts` | `quote-signature.test.ts` (39) incl. a **real captured signature** and tamper cases; live test | **Status responses are not verified**: the docs' index says status payloads are signed but document no algorithm and the SDK ships no status verifier |
 | JWT support, 0.25% documented | `Done` | `rail.ts`; `RAILS.md` | `rail.test.ts` | Asuzu has no JWT |
-| NEAR fees shown separately from Byte's | `Partial` | Raw response on the quote | — | No typed breakdown (B1) |
-| Fixtures: statuses, signature pass and fail, refunds | `Partial` | `rail.test.ts` | 26 tests | Signature fixtures missing |
-| Live test gated by `BYTE_RAILS_LIVE=1` | `Missing` | — | — | B1 |
-| `SECURITY.md` on `confidentiality` | `Partial` | Transparent leg covered | — | `confidentiality` caveat absent |
+| NEAR fees shown separately from Byte's | `Done` | `rail.ts` `#feesFrom`; `RailFees` | `cashout.test.ts` "the fee breakdown" (3) | — |
+| Fixtures: statuses, signature pass and fail, refunds | `Done` | `rail.test.ts`, `quote-signature.test.ts`, `fixtures/` | 92 | — |
+| Live test gated by `BYTE_RAILS_LIVE=1` | `Done` | `rails/near-intents/src/live.test.ts` | Ran against the real service: 5 pass, dry only | Never non-dry; that needs a JWT and Asuzu |
+| `SECURITY.md` on `confidentiality` | `Done` | SECURITY §2.4, RAILS.md | — | — |
 | Other rails Implemented or Planned with reasons | `Done` | `RAILS.md` | — | — |
 
 ## F10: Framework adapters
@@ -201,14 +201,14 @@ OpenClaw do not exist in this repo, and nothing claims they do.
 | `byte_pay` | `Done` | `Done` | `Done` | `Partial` (`byte_fetch_paid`) |
 | `byte_invoice` | `Done` | `Done` | `Done` | `Missing` |
 | `byte_balance` | `Missing` | `Missing` | `Missing` | `Done` |
-| `byte_receipt` | `Missing` | `Missing` | `Missing` | `Missing` |
-| `byte_shield` / `byte_unshield` | `Missing` | `Missing` | `Missing` | `Missing` |
-| `byte_fund` / `byte_cashout` | `Missing` | `Missing` | `Missing` | `Missing` |
+| `byte_receipt` | `Missing` | `Missing` | `Missing` | `Done` |
+| `byte_shield` / `byte_unshield` | `Missing` | `Missing` | `Missing` | `Done` |
+| `byte_fund` / `byte_cashout` | `Missing` | `Missing` | `Missing` | `Partial` |
 | `byte_escrow_*` | `Missing` | `Missing` | `Missing` | `Missing` |
-| `byte_agent_card` | `Missing` | `Missing` | `Missing` | `Missing` |
+| `byte_agent_card` | `Missing` | `Missing` | `Missing` | `Done` |
 | Full loop through the mock wallet | `Done` | `Done` | `Done` | `Done` |
 
-Tools are only exposed for features that are `Done`. New adapters need Asuzu's choice.
+Tools are only exposed for features that are `Done`. LangChain's `createTreasuryTools` is opt-in and separate from `createByteTools`: unshielding publishes an amount, and an operator who handed an agent a paywall-fetching tool did not agree to that. `byte_fund` is `Partial` (`byte_cashout` exists, funding does not). x402, MCP and A2A/AP2 got no new tools this pass. **No new adapters were built**, per Asuzu.
 
 ## F11: NU7 readiness
 
@@ -217,7 +217,7 @@ Tools are only exposed for features that are `Done`. New adapters need Asuzu's c
 | Never hardcode block time | `Done` | `core/src/network.ts` | `network.test.ts` (13) | — |
 | Read spacing from the chain | `Done` | `/status` `consensusBranchId` → `blockTargetSeconds` | `network.test.ts`; `server.test.ts` (3) | — |
 | Derive `Retry-After` and waits from it | `Done` | `verifier.ts`; `scripts/testnet-e2e.ts` | `server.test.ts` | — |
-| Build v5+ transactions only | `Partial` | `propose_transfer(..., proposed_version: None)` | — | The built version is asserted nowhere (B9). Ironwood needs v6, ZIP 229 is `Draft` |
+| Build v5+ transactions only | `Done` | `chain.rs` `assert_modern_version` at broadcast | `chain.rs` `only_v5_and_v6_transactions_may_be_broadcast` | v6 is ZIP 229, still Draft |
 | Test matrix for 75 s vs 25 s | `Done` | `network.test.ts` | 13 | — |
 | NU7 activation heights | `Not feasible yet` | Deliberately `undefined` | `network.test.ts` "is not decided by height" | ZIP 259: testnet "TBD (To be set on OCT 5)", mainnet "TBD (To be set on OCT 20)" |
 
@@ -232,7 +232,7 @@ Tools are only exposed for features that are `Done`. New adapters need Asuzu's c
 | Price-source health | `Done` | `GET /price` | `console.test.ts` (5) | — |
 | Rail jobs, both directions | `Missing` | — | — | B8 |
 | Escrow jobs | `Missing` | — | — | B8 |
-| Agent card | `Missing` | — | — | B8 |
+| Agent card | `Done` | `console/src/api.ts` `GET /agent-card` | `console.test.ts` (3) | — |
 | Every route authenticated | `Done` | `api.ts` | `console.test.ts` "no route is exempt" | — |
 
 ---

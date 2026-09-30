@@ -25,7 +25,9 @@ function invoice(overrides: Partial<StoredInvoice> = {}): StoredInvoice {
   };
 }
 
-function harness(options: { guard?: SpendGuard; priceSource?: PriceSource } = {}) {
+function harness(
+  options: { guard?: SpendGuard; priceSource?: PriceSource; agentCard?: unknown } = {},
+) {
   const pair = createMockPair(NETWORK_TESTNET);
   const invoices = new MemoryInvoiceStore();
   const receipts = new MemoryReceiptStore();
@@ -37,6 +39,7 @@ function harness(options: { guard?: SpendGuard; priceSource?: PriceSource } = {}
     label: "demo node",
     ...(options.guard !== undefined ? { guard: options.guard } : {}),
     ...(options.priceSource !== undefined ? { priceSource: options.priceSource } : {}),
+    ...(options.agentCard !== undefined ? { agentCard: options.agentCard } : {}),
   });
   return { pair, invoices, receipts, handle };
 }
@@ -335,5 +338,24 @@ describe("GET /price", () => {
     const h = harness({ priceSource: healthy });
     const res = await h.handle(request("GET", "/price", { token: null }));
     expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /agent-card", () => {
+  it("returns the configured card", async () => {
+    const card = { agentId: "alpha", ua: "utest1abc" };
+    const h = harness({ agentCard: card });
+    const res = await h.handle(request("GET", "/agent-card"));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(card);
+  });
+
+  it("404s when none is configured", async () => {
+    expect((await harness().handle(request("GET", "/agent-card"))).status).toBe(404);
+  });
+
+  it("is behind the token like every other route", async () => {
+    const h = harness({ agentCard: { agentId: "alpha" } });
+    expect((await h.handle(request("GET", "/agent-card", { token: null }))).status).toBe(401);
   });
 });

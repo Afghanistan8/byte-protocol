@@ -104,6 +104,8 @@ describe("docs/GAP_AUDIT.md", () => {
       "README and SPEC state ZEC settlement and price risk",
       "Never described as \"on-chain allowances\"",
       "Other rails Implemented or Planned with reasons",
+      "Documented: anchor private by default",
+      "`SECURITY.md` on `confidentiality`",
       "Mock price source",
       "Protocol fee = 0",
     ];
