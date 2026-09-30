@@ -182,6 +182,29 @@ impl ViewingKeys {
         &self.ufvk
     }
 
+    /// The **incoming** viewing key, encoded.
+    ///
+    /// ## Why this exists alongside the UFVK
+    ///
+    /// A UFVK sees incoming *and outgoing* notes: hand one to an auditor and they can read
+    /// every payment the account has ever made, not only the ones it received. A UIVK sees
+    /// received notes and their memos, which is all that is needed to confirm an invoice
+    /// was paid.
+    ///
+    /// Selective disclosure means handing over the least that answers the question. For
+    /// "were these invoices paid", that is this key.
+    ///
+    /// Still not nothing: a UIVK reveals **every** payment the account has received, past
+    /// and future, for as long as the key exists. It cannot be scoped to one invoice and it
+    /// cannot be revoked. A signed receipt discloses exactly one payment and is the right
+    /// tool when one payment is the question; docs/SECURITY.md sets out which to use when.
+    pub fn export_uivk(&self) -> Result<String, KeyError> {
+        Ok(self
+            .ufvk
+            .to_unified_incoming_viewing_key()
+            .encode(&self.network.params()))
+    }
+
     /// Derive the invoice address at a specific diversifier index.
     ///
     /// Returns the encoded address and the index actually used, which may be higher than
@@ -380,6 +403,26 @@ mod tests {
         let mut cursor = DiversifierCursor::default();
         cursor.next_address(&view).unwrap();
         assert!(cursor.position() >= 1);
+    }
+
+    #[test]
+    fn a_uivk_is_a_different_key_from_the_ufvk() {
+        // The point of exporting one. A UFVK sees incoming and outgoing notes; a UIVK sees
+        // only what arrived. Handing an auditor the full key discloses spending they never
+        // needed to see.
+        let v = viewing();
+        let uivk = v.export_uivk().unwrap();
+        let ufvk = v.ufvk().encode(&v.network().params());
+
+        assert_ne!(uivk, ufvk);
+        assert!(uivk.starts_with("uivktest"), "unexpected UIVK encoding: {uivk}");
+        assert!(ufvk.starts_with("uviewtest"), "unexpected UFVK encoding: {ufvk}");
+    }
+
+    #[test]
+    fn a_uivk_is_stable_for_the_same_account() {
+        let v = viewing();
+        assert_eq!(v.export_uivk().unwrap(), v.export_uivk().unwrap());
     }
 
     #[test]

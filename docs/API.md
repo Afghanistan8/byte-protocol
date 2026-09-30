@@ -127,6 +127,20 @@ receiver. Never returns the same address twice.
 
 ### `GET /viewing-key`
 
+Returns both keys, so a caller can hand over the narrower one:
+
+```json
+{ "uivk": "uivktest1…", "ufvk": "uviewtest1…" }
+```
+
+**`uivk` is the one to give away.** It sees received notes and their memos, which is
+everything needed to verify a Byte invoice was paid. `ufvk` additionally sees what the
+account has *spent*, which an auditor asking "was I paid" never needed.
+
+Neither can spend. Both disclose every payment the account receives, for as long as the key
+exists, and neither can be scoped to one invoice or revoked. When the question is about one
+payment, a signed receipt answers it and discloses nothing else. See docs/SECURITY.md.
+
 ```json
 { "ufvk": "uviewtest1qvtryhkavsvn98…" }
 ```

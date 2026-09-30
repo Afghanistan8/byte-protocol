@@ -249,3 +249,36 @@ Two further facts, both found by running against the live service rather than re
 
 If your threat model cannot tolerate a public funding leg, no setting here fixes that. Fund
 the wallet with shielded ZEC and do not use a transparent rail.
+
+### 5.7 Which key to hand an auditor, and when not to hand one at all
+
+Three ways to prove a payment happened, from narrowest to widest. Pick the narrowest that
+answers the question actually being asked.
+
+**A signed receipt** discloses one payment: its invoice, its transaction, its amount, its
+destination, and the USD price if there was one. Nothing else. It is an Ed25519 signature by
+the payee, so it proves the payee asserted those facts, and it proves nothing about any other
+payment. This is the right answer to "was invoice X paid".
+
+It does not prove the transaction exists — only a node can say that — and it does not prove
+the issuer is anyone in particular. Bind the issuer key to an identity through an Agent Card
+first.
+
+**A unified incoming viewing key (UIVK)** discloses every payment the account *receives*.
+Right when the question is "show me all your income", wrong when it is "show me this one".
+
+**A unified full viewing key (UFVK)** discloses received *and* outgoing notes: it shows what
+the account has spent as well as what it took. An auditor asking about revenue never needed
+this. `GET /viewing-key` returns both so the narrower one can be chosen deliberately.
+
+What none of them can do:
+
+- **No key can be scoped to a subset of payments.** There is no "show them these three
+  invoices" key. That is what receipts are for.
+- **No key can be revoked.** Handing one over is permanent, and it covers future payments as
+  well as past ones. Rotating means moving to a new account.
+- **Neither key can spend.** That is a real guarantee and the reason a facilitator is given
+  one rather than a seed.
+
+Per-transaction disclosure — proving one payment to someone holding no key at all — is what
+ZIP 311 would give. It is still `Draft`, so Byte does not implement it and does not claim to.

@@ -303,10 +303,16 @@ asking would create exactly the identity linkage Byte avoids.
 A payee MAY return a **receipt**: an Ed25519 signature over the canonical serialization of
 `{ invoiceId, txid, amount, payTo, network, timestamp }`.
 
-Receipts are the unit of **selective disclosure**. Nothing is disclosed by default. A
-payee that must satisfy an auditor can hand over specific receipts, or an incoming-viewing
-key scoped to what the auditor is entitled to see — rather than opening its whole payment
-history.
+Receipts are the unit of **selective disclosure**. Nothing is disclosed by default, and a
+payee that must satisfy an auditor hands over receipts for the payments in question and
+nothing else.
+
+An earlier version of this section offered "an incoming-viewing key scoped to what the
+auditor is entitled to see". **No such scoping exists.** A UIVK reveals every payment the
+account receives, past and future, for as long as the key exists, and it cannot be revoked.
+It is narrower than a UFVK, which additionally reveals spending, and that is the whole of
+its advantage. Byte exports both (`GET /viewing-key`) and says which is which; the choice
+between a receipt and a key is set out in SECURITY.md §5.7.
 
 An **Agent Card** is a signed document declaring an agent's ID, endpoint, a
 Byte-accepting unified address and its supported schemes. Identity is public here because

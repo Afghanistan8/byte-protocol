@@ -300,6 +300,11 @@ impl WalletState {
         Ok((address, index))
     }
 
+    /// The incoming viewing key: enough to verify payments, not enough to see spending.
+    pub fn export_uivk(&self) -> Result<String, WalletStateError> {
+        Ok(self.viewing.export_uivk()?)
+    }
+
     pub fn export_ufvk(&self) -> Result<String, WalletStateError> {
         match &self.spending {
             Some(keys) => Ok(keys.export_ufvk()?),

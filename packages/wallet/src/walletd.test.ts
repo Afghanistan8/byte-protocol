@@ -32,7 +32,9 @@ function fakeWalletd(overrides: Record<string, { status?: number; body: unknown 
     "POST /addresses": {
       body: { address: "utest1xghzan2ngrekdl2pw3cfnu8cnkucmvez", diversifierIndex: 0 },
     },
-    "GET /viewing-key": { body: { ufvk: "uviewtest1qvtryhkavsvn98" } },
+    "GET /viewing-key": {
+      body: { uivk: "uivktest1qqqqpqqz9x2", ufvk: "uviewtest1qvtryhkavsvn98" },
+    },
     "GET /balance": {
       body: { spendableZat: "9990000", pendingZat: "0", unusableZat: "0" },
     },
@@ -505,5 +507,26 @@ describe("unshield", () => {
       wallet.unshield({ toTransparent: "utest1payee", amountZat: "5000000" }),
     ).rejects.toThrow(/transparent address/);
     expect(fake.requests.filter((r) => r.path === "/unshield")).toHaveLength(0);
+  });
+});
+
+describe("viewing keys", () => {
+  it("returns the full viewing key", async () => {
+    const { wallet } = await connect();
+    expect(await wallet.viewingKey()).toBe("uviewtest1qvtryhkavsvn98");
+  });
+
+  it("returns the incoming viewing key, which is the one to hand over", async () => {
+    // A UFVK sees incoming and outgoing notes. An auditor asking "was I paid" never needed
+    // to see what the account spent.
+    const { wallet } = await connect();
+    expect(await wallet.incomingViewingKey()).toBe("uivktest1qqqqpqqz9x2");
+  });
+
+  it("says so plainly when the sidecar is too old to have one", async () => {
+    const { wallet } = await connect({
+      "GET /viewing-key": { body: { ufvk: "uviewtest1qvtryhkavsvn98" } },
+    });
+    await expect(wallet.incomingViewingKey()).rejects.toThrow(/older sidecar/);
   });
 });

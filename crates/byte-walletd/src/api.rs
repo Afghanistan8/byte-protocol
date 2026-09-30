@@ -140,6 +140,12 @@ pub struct AddressResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewingKeyResponse {
+    /// The unified **incoming** viewing key.
+    ///
+    /// Sees received notes and their memos: enough to verify that an invoice was paid, and
+    /// not enough to see what the account has spent. Prefer it when handing a key to a
+    /// facilitator or an auditor.
+    pub uivk: String,
     /// The unified full viewing key. Grants the ability to *see* payments, never to spend.
     pub ufvk: String,
 }
@@ -324,6 +330,7 @@ async fn viewing_key(
 ) -> ApiResult<ViewingKeyResponse> {
     authorize(&headers, &state.api_token)?;
     Ok(Json(ViewingKeyResponse {
+        uivk: state.wallet.export_uivk()?,
         ufvk: state.wallet.export_ufvk()?,
     }))
 }

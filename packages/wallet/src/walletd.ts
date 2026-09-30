@@ -415,13 +415,39 @@ export class WalletdWallet implements ShieldingWallet {
     };
   }
 
-  /** Export the viewing key, to hand a facilitator. */
+  /**
+   * Export the **full** viewing key.
+   *
+   * Sees incoming and outgoing notes. For a facilitator or an auditor, prefer
+   * {@link incomingViewingKey}: verifying that invoices were paid needs only what arrived,
+   * and a UFVK additionally discloses everything the account has spent.
+   */
   async viewingKey(): Promise<string> {
     const response = (await this.#request("GET", "/viewing-key")) as { ufvk?: unknown };
     if (typeof response.ufvk !== "string") {
       throw new ByteProtocolError("byte-walletd returned no viewing key");
     }
     return response.ufvk;
+  }
+
+  /**
+   * Export the **incoming** viewing key.
+   *
+   * Enough to see received notes and their memos, and therefore enough to verify a Byte
+   * invoice was paid. Not enough to see what the account spent.
+   *
+   * It is still a broad disclosure: every payment the account receives, for as long as the
+   * key exists, and it cannot be scoped to one invoice or revoked. When the question is
+   * about one payment, a signed receipt answers it and discloses nothing else.
+   */
+  async incomingViewingKey(): Promise<string> {
+    const response = (await this.#request("GET", "/viewing-key")) as { uivk?: unknown };
+    if (typeof response.uivk !== "string") {
+      throw new ByteProtocolError(
+        "byte-walletd returned no incoming viewing key; it may be an older sidecar",
+      );
+    }
+    return response.uivk;
   }
 
   async #request(
