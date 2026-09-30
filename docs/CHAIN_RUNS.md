@@ -562,15 +562,29 @@ caller cannot name it in advance, and almost every real transaction has change. 
 applies to `maxTotalZat`, which sums every output: a cap set to what you intend to *pay* will
 refuse, because the total includes what is coming back to you.
 
-The fix is to exempt change, and it cannot be written today. A PCZT output carries
-`zip32_derivation`, the field that says "the spending key for this output is at this path" and
-therefore marks it as the wallet's own. In `orchard` 0.15.5 that field is `pub(crate)` with no
-accessor, so a signer outside the crate cannot read it. Distinguishing change from a payment
-is not possible from where the signer stands.
+The fix is to exempt change, and it is **not built**. An earlier version of this entry said
+it could not be built, which was wrong, and the mistake is worth recording because it is the
+kind that quietly becomes permanent.
 
-So the mechanism works — the run above demonstrates a cap being enforced on a real chain — and
-what it measures is not yet what a person means by it. That is written into `GAP_AUDIT.md` and
-`API.md` as well as here, and the feature stays `Partial`.
+A PCZT output carries `zip32_derivation`, the field that says "the spending key for this
+output is at this path" and therefore marks it as the wallet's own. In `orchard` 0.15.5 that
+field is `pub(crate)` with no accessor, so a signer cannot read it *out of the PCZT*. I
+concluded from that the information was unavailable and stopped looking.
+
+It is not in the PCZT; it is derivable from a key the signer already holds.
+`orchard::keys::IncomingViewingKey::diversifier_index(&Address)` returns `Some` for an address
+belonging to that key. Feed it each reviewed recipient and the ones that answer `Some` are the
+wallet's own. The allow list and the cap then apply to the rest, which is what a person means
+by both.
+
+One consequence worth stating: `split_sign::review` is currently pure and needs no key, which
+is a property worth keeping. The exemption needs a viewing key, so it belongs at the layer
+that has one — the `/pczt/sign` route — rather than in `review`. A signer holding a spending
+key holds the viewing key too, so nothing is weakened by putting it there.
+
+So the mechanism works, the run above demonstrates a cap enforced on a real chain, and what it
+measures is not yet what a person means by it. Not blocked; unbuilt. The feature stays
+`Partial` until it is built and re-run.
 
 ### What this still does not prove
 

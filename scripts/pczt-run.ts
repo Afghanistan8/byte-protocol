@@ -186,13 +186,14 @@ async function main(): Promise<void> {
   line(`    ${signedHex.length / 2} bytes`);
   line(`    policy applied: ${JSON.stringify(signed.policyApplied)}`);
   line();
-  line("    The cap is set to the review's total because that total INCLUDES CHANGE, and a");
-  line("    signer cannot tell change from a payment: the orchard crate's PCZT output keeps");
-  line("    `zip32_derivation` — the field that says an output is spendable by this wallet —");
-  line("    private, with no accessor. So `maxTotalZat` caps value leaving the wallet plus");
-  line("    value returning to it, and `allowRecipients` would have to name a change address");
-  line("    that is minted per transaction and cannot be known in advance. The mechanism");
-  line("    works, demonstrated above. What it measures is not yet what a user means.");
+  line("    The cap is set to the review's total because that total INCLUDES CHANGE. The");
+  line("    signer cannot yet tell change from a payment, so `maxTotalZat` caps value leaving");
+  line("    the wallet plus value coming back to it, and `allowRecipients` would have to name");
+  line("    a change address minted per transaction. Not blocked, unbuilt: the PCZT keeps");
+  line("    `zip32_derivation` private, but IncomingViewingKey::diversifier_index answers Some");
+  line("    for this wallet's own addresses, so the exemption is derivable where a key is");
+  line("    held. The mechanism works, demonstrated above; what it measures is not yet what a");
+  line("    user means.");
 
   step(5, "prove — add the Ironwood proof. No secret needed");
   const proved = await sidecar.post("/pczt/prove", { pczt: signedHex });
@@ -233,9 +234,9 @@ async function main(): Promise<void> {
   line();
   line("    Limitations, both real. Every stage ran against one sidecar, which is what one");
   line("    machine can show: it proves the stages agree, not that the key was ever somewhere");
-  line("    the builder could not reach. And the signing policy counts change, because the");
-  line("    PCZT field that marks an output as this wallet's own is private in the orchard");
-  line("    crate, so a cap or an allow list cannot yet express what a person means by them.");
+  line("    the builder could not reach. And the signing policy still counts change, so a cap");
+  line("    or an allow list does not yet express what a person means by them. That is unbuilt");
+  line("    rather than impossible; see docs/CHAIN_RUNS.md run 6.");
   line();
 
   if (failed > 0) throw new Error(`${failed} check(s) failed`);
