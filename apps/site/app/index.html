@@ -499,6 +499,8 @@
         </span>
       </button>
 
+      <div id="ip-hint"></div>
+
       <button class="option" id="opt-snap">
         <span class="t">MetaMask &middot; Zcash Shielded Wallet <span class="tag hot" id="snap-state">checking…</span></span>
         <span class="d">
@@ -734,14 +736,51 @@
     );
   }
 
+  /**
+   * The same page on `localhost` rather than a numeric loopback address, or null when that
+   * does not apply.
+   *
+   * A browser extension chooses which pages it will inject into, and several match on
+   * hostname patterns that `127.0.0.1` does not satisfy while `localhost` does. The two are
+   * the same server. So a wallet that is installed, unlocked and working reports "not
+   * detected" here purely because of how the address was typed, which is a dead end with
+   * nothing on the page to suggest a way out of it.
+   */
+  function localhostEquivalent() {
+    if (typeof window === "undefined") return null;
+    var host = window.location.hostname;
+    if (host !== "127.0.0.1" && host !== "[::1]" && host !== "::1") return null;
+    return (
+      window.location.protocol + "//localhost" +
+      (window.location.port === "" ? "" : ":" + window.location.port) +
+      window.location.pathname + window.location.search + window.location.hash
+    );
+  }
+
   function detectNoir() {
     var badge = el("noir-state");
+    var hint = el("ip-hint");
     if (!noir()) {
       badge.className = "tag no";
       badge.textContent = "Not detected";
       el("opt-noir").disabled = true;
+
+      // Only worth saying once the polling has had time to fail; see watchForNoir.
+      var elsewhere = localhostEquivalent();
+      if (elsewhere !== null && hint.innerHTML === "") {
+        hint.innerHTML =
+          '<div class="note warn"><strong>This page is on a numeric address, and most ' +
+          "wallet extensions will not inject into one.</strong><br>" +
+          "They are the same server; only the spelling differs. Open " +
+          '<a href="' + escapeHtml(elsewhere) + '">' + escapeHtml(elsewhere) + "</a> " +
+          "and connect there.<br><br>" +
+          "If the wallet is still not detected on localhost, open " +
+          "<span class=\"mono\">chrome://extensions</span>, find it, and set " +
+          "<strong>Site access</strong> to <strong>On all sites</strong>.</div>";
+      }
       return false;
     }
+    hint.innerHTML = "";
     badge.className = "tag hot";
     var v = noirVersion();
     badge.textContent = v ? "Detected " + v : "Detected";

@@ -164,7 +164,11 @@ async function main(): Promise<void> {
   const balance = await wallet.balance();
   line(`A real Byte seller is running on ${choice.name}.`);
   line();
-  line(`  open          http://127.0.0.1:${PORT}/`);
+  // localhost rather than 127.0.0.1. They are the same server, but a browser extension
+  // decides for itself which pages it injects into and several will not touch a numeric
+  // host, so a wallet that is installed and working reports "not detected" on the wrong
+  // spelling of the same address.
+  line(`  open          http://localhost:${PORT}/`);
   line(`  network       ${wallet.network}`);
   line(`  synced        block ${status.syncedHeight}`);
   line(`  seller wallet ${balance.spendableZat} zat spendable`);
