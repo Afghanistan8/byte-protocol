@@ -746,20 +746,64 @@
     node.className = "v";
   }
 
+  /**
+   * Read a ZEC amount from whatever Noir sends: a decimal string, a number, or missing.
+   * Returns zatoshis as a string, or null when there is nothing usable there.
+   */
+  function amountToZat(value) {
+    if (value === undefined || value === null || value === "") return null;
+    if (typeof value === "number") {
+      if (!isFinite(value) || value < 0) return null;
+      // toFixed(8) rather than the number itself: 1e-7 would otherwise print as "1e-7".
+      value = value.toFixed(8);
+    }
+    return zecToZat(value);
+  }
+
   function refreshNoir() {
     return noirRequest("zcash_getBalance")
       .then(function (b) {
         // Shielded is what Byte can spend. Transparent is reported as unusable, because
         // moving it would cross pools and ZIP 318 makes that amount public.
-        setStat("d-spendable", zecToZat(b && (b.spendable || b.shielded)));
+        var shielded = amountToZat(b && (b.spendable !== undefined ? b.spendable : b.shielded));
+        var transparent = amountToZat(b && b.transparent);
+        var total = amountToZat(b && b.total);
+
+        // When Noir gives a total but no transparent figure, whatever the total holds beyond
+        // the shielded part is not spendable here. Derived, and only when it is unambiguous.
+        if (transparent === null && total !== null && shielded !== null) {
+          var rest = BigInt(total) - BigInt(shielded);
+          transparent = (rest > 0n ? rest : 0n).toString(10);
+        }
+
+        setStat("d-spendable", shielded === null ? "0" : shielded);
         setStat("d-pending", null);
-        setStat("d-unusable", zecToZat(b && b.transparent));
+        setStat("d-unusable", transparent === null ? "0" : transparent);
         el("d-network").textContent = "via Noir";
-        el("d-height").textContent = "—";
+        el("d-height").textContent = "\u2014";
         el("d-height").className = "v muted";
         el("noir-pay").classList.remove("hide");
+
+        var hint = "";
+        if (transparent !== null && BigInt(transparent) > 0n && (shielded === null || BigInt(shielded) === 0n)) {
+          hint =
+            " <strong>Your coins are transparent.</strong> Byte can only spend shielded coins, so " +
+            "open Noir and press <strong>Shield Funds</strong> first, then wait for it to confirm.";
+        }
+        note("Connected to Noir. Balance read." + hint, "good");
+        // Kept for anyone debugging a mismatch: exactly what Noir said, not what we made of it.
+        console.info("Noir zcash_getBalance:", b);
       })
-      .catch(function () {});
+      .catch(function (error) {
+        // Never swallowed. A balance read that fails silently looked exactly like a slow one.
+        note(
+          "Connected to Noir, but reading your balance failed: " +
+            escapeHtml(error && error.message ? error.message : String(error)) +
+            ". You can still build and send a payment below; Noir checks your funds itself.",
+          "bad"
+        );
+        el("noir-pay").classList.remove("hide");
+      });
   }
 
   /**
@@ -848,8 +892,15 @@
     return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   }
 
-  /** "0.001" -> "100000". Exact string arithmetic; a float here could pay the wrong amount. */
-  function zecToZat(zec) {
+  /**
+   * "0.001" -> "100000". Exact string arithmetic; a float here could pay the wrong amount.
+   *
+   * Named apart from `zecToZat` on purpose. This one used to share that name, and a later
+   * function declaration silently replaces an earlier one, so the balance reader ended up
+   * calling this strict version, which throws on a balance of 0. The error was swallowed
+   * and the page sat on "Reading your balance" forever.
+   */
+  function practiceZecToZat(zec) {
     var m = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,8}))?$/.exec(zec);
     if (!m) throw new Error("Amount must be a plain number with at most 8 decimals, like 0.001");
     var zat = BigInt(m[1]) * 100000000n + BigInt((m[2] || "").padEnd(8, "0"));
@@ -902,7 +953,7 @@
     }
 
     var zat;
-    try { zat = zecToZat(el("pr-amt").value.trim()); }
+    try { zat = practiceZecToZat(el("pr-amt").value.trim()); }
     catch (e) { out.innerHTML = '<div class="note bad">' + escapeHtml(e.message) + "</div>"; return; }
 
     var idBytes = crypto.getRandomValues(new Uint8Array(16));
