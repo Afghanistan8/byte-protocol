@@ -24,6 +24,31 @@ marked **Planned**, which here means *not implemented and not claimed*.
 
 ---
 
+## Escrow: deliberately not built
+
+The brief asks for arbiter-based escrow for agent jobs. It is documented rather than built,
+and this records why so it reads as a decision and not an omission.
+
+**Mode A, shielded 2-of-3 with FROST.** Not feasible today. `ZcashFoundation/frost` has
+`frost-core` and ciphersuites for ed25519, ed448, p256, ristretto255, secp256k1 and
+secp256k1-tr, plus `frost-rerandomized`, but no Pallas or Orchard ciphersuite. `reddsa`
+0.6.1 has `batch`, `orchard` and `sapling` modules and no FROST module; its docs say the
+support "will be provided by the frost repository", which does not provide it. A ZCG grant
+application for a shielded multisig SDK exists, which is to say this is future work by
+someone else.
+
+**Mode B, transparent 2-of-3 P2SH.** Works today. It publishes the amount and all three
+addresses. Byte's entire claim is that agent payments do not do that, and shipping an escrow
+feature that does would put a public ledger of every job next to a privacy pitch. Choosing
+not to build it was a decision made with the trade-off in view.
+
+**What is buildable, and not built:** the off-chain job state machine
+(`created → funded → delivered → released | refunded | disputed → resolved`) with a
+`JobStore`, timeouts and signed transitions, funded by ordinary shielded payments and
+released by an arbiter's policy. It gives up on-chain enforcement, which Zcash cannot offer
+anyway, and keeps everything private. It is the next thing to build if escrow matters to a
+user.
+
 ## Next
 
 ### A Redis store, for several processes sharing one payee

@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**<!--stats:total-->727<!--/stats--> tests pass**: <!--stats:ts-->662<!--/stats--> TypeScript, <!--stats:rust-->65<!--/stats--> Rust.
+**<!--stats:total-->753<!--/stats--> tests pass**: <!--stats:ts-->687<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust.
 
 ---
 
@@ -180,6 +180,28 @@ Three decisions where the obvious implementation is wrong:
   limit and no update path.
 
 ---
+
+## What Zcash can't do (yet)
+
+I would rather list these than have a reader find them. Each is a thing people expect from
+agent-payment systems on other chains, and each is absent here for a reason about Zcash and
+not a reason about effort.
+
+- **Shielded stablecoin transfers.** There is no USDC on Zcash, and ZSAs are not on mainnet.
+  Invoices can be priced in dollars, but they settle in ZEC.
+- **Fees enforced on-chain.** There are no contracts. The optional facilitator fee is
+  enforced by the facilitator's verification, and a payer who bypasses the facilitator
+  bypasses the fee.
+- **Trustless, code-enforced escrow.** Nothing can lock funds under a condition. A shielded
+  2-of-3 escrow would need FROST over the Orchard curve, and the Zcash Foundation's FROST
+  workspace ships no Pallas or re-randomized Orchard ciphersuite. A transparent 2-of-3
+  multisig would work today and would publish the amounts and both addresses, which is the
+  opposite of what this project is for, so I have not built it.
+- **On-chain identity and reputation registries.** Agent Cards are signed documents and
+  reputation is a function over signed receipts. Nothing is published to a chain.
+- **On-chain allowances or operators.** Spend limits live in the spend guard, and in a signer
+  that reads a transaction before it signs. No contract enforces them.
+- **Public event indexing of shielded activity.** By design. That is the point.
 
 ## Fees
 

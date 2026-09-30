@@ -7,3 +7,6 @@
 
 export * from "./card.js";
 export * from "./resolver.js";
+export * from "./reputation.js";
+export * from "./anchor.js";
+export * from "./a2a.js";
