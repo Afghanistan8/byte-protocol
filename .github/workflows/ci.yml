@@ -37,10 +37,21 @@
 
 name: CI
 
+# ## Currently manual, and why
+#
+# GitHub answered the first run with "The job was not started because your account is locked
+# due to a billing issue". Every job failed in under four seconds having run no step. While
+# that is true, a push trigger cannot produce a passing run and can only produce a failure
+# email per push, so the automatic triggers are commented out rather than left to generate
+# noise that means nothing about the code.
+#
+# **To re-enable once billing is resolved:** uncomment the two lines below. Nothing else
+# needs to change; the workflow itself ran correctly, which the two earlier `startup_failure`
+# runs never did.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  # push:
+  #   branches: [main]
+  # pull_request:
   workflow_dispatch:
 
 concurrency:
