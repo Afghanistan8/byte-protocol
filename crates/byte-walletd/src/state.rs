@@ -192,6 +192,24 @@ impl WalletState {
         })
     }
 
+    /// The key that authorizes Ironwood spends, for the split signer.
+    ///
+    /// Ironwood spends are signed with the Orchard spend authorizing key: the pool is new,
+    /// the curve is not, which is why `pczt`'s `sign_ironwood` takes an `orchard`
+    /// `SpendAuthorizingKey`. Derived on each call rather than held, so the process keeps
+    /// one copy of the secret, in the seed, instead of two.
+    ///
+    /// `ViewOnly` for a wallet built from a viewing key, which is the whole point of that
+    /// deployment: a facilitator holding this cannot sign anything.
+    pub fn spend_authorizing_key(
+        &self,
+    ) -> Result<orchard::keys::SpendAuthorizingKey, WalletStateError> {
+        let spending = self.spending.as_ref().ok_or(WalletStateError::ViewOnly)?;
+        Ok(orchard::keys::SpendAuthorizingKey::from(
+            spending.usk()?.orchard(),
+        ))
+    }
+
     /// Attach the chain this wallet sends through.
     pub fn with_sender(mut self, sender: Arc<LightwalletdChain>) -> Self {
         self.sender = Some(sender);

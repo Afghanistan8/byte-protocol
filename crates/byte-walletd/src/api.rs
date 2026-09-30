@@ -238,6 +238,45 @@ pub struct UnshieldRequest {
     pub amount_zat: String,
 }
 
+/// A PCZT, hex-encoded, and what the signer may agree to do with it.
+///
+/// Hex rather than base64 because `hex` is already a dependency and a PCZT crosses
+/// loopback: the 1.33x a base64 encoding would save is not worth another crate in a
+/// signing path, which is the last place to add one for convenience.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PcztRequest {
+    /// The PCZT, hex-encoded.
+    pub pczt: String,
+    /// Encoded unified addresses this signer will pay. Any recipient when absent.
+    ///
+    /// Absent means "no restriction", which is the dangerous default, so `/pczt/sign`
+    /// reports back which policy it applied rather than leaving a caller to assume.
+    #[serde(default)]
+    pub allow_recipients: Vec<String>,
+    /// Refuse if the total paid to others exceeds this, as a base-10 integer string.
+    #[serde(default)]
+    pub max_total_zat: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PcztResponse {
+    /// The resulting PCZT, hex-encoded.
+    pub pczt: String,
+    /// What the signer read before it acted, so a caller can log what was authorized.
+    pub review: crate::split_sign::SignReview,
+    /// The policy that was actually applied, stated rather than assumed.
+    pub policy_applied: PolicyApplied,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PolicyApplied {
+    pub recipients_restricted: bool,
+    pub max_total_zat: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NotesQuery {
@@ -261,9 +300,17 @@ pub fn router(state: AppState) -> Router {
         .route("/send", post(send))
         .route("/shield", post(shield))
         .route("/unshield", post(unshield))
-        // 64 KiB is far above any legitimate request here and well below anything that
-        // would let an unauthenticated caller exhaust memory.
-        .layer(tower_http::limit::RequestBodyLimitLayer::new(64 * 1024))
+        // The split signer. `review` needs no key and is safe for a view-only deployment;
+        // `sign` needs the spending key and refuses without one.
+        .route("/pczt/review", post(pczt_review))
+        .route("/pczt/sign", post(pczt_sign))
+        .route("/pczt/prove", post(pczt_prove))
+        // 1 MiB. Every other route here is satisfied by a few hundred bytes and 64 KiB
+        // was the limit for years, but a PCZT is a whole transaction plus the metadata a
+        // signer needs, hex-encoded, and a legitimate one can exceed 64 KiB. The limit
+        // exists so an unauthenticated caller cannot exhaust memory; it still does, and
+        // every PCZT route is behind the bearer token besides.
+        .layer(tower_http::limit::RequestBodyLimitLayer::new(1024 * 1024))
         .layer(tower_http::trace::TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -448,6 +495,143 @@ async fn unshield(
     ))
 }
 
+/// Decode a hex PCZT, saying which field was wrong rather than "bad request".
+fn parse_pczt(hex_encoded: &str) -> Result<::pczt::Pczt, ApiFailure> {
+    let bytes = hex::decode(hex_encoded.trim()).map_err(|e| {
+        ApiFailure(
+            StatusCode::BAD_REQUEST,
+            ApiError::new("bad_request", format!("pczt is not valid hex: {e}")),
+        )
+    })?;
+    ::pczt::Pczt::parse(&bytes).map_err(|e| {
+        ApiFailure(
+            StatusCode::BAD_REQUEST,
+            ApiError::new("bad_request", format!("pczt did not parse: {e:?}")),
+        )
+    })
+}
+
+/// Encode a PCZT for the response.
+///
+/// `serialize` is fallible. A PCZT this process just signed or proved failing to encode is
+/// a bug in this process, not bad input from the caller, so it is a 500 and names the stage
+/// rather than being folded into a generic bad-request.
+fn encode_pczt(pczt: ::pczt::Pczt, stage: &str) -> Result<String, ApiFailure> {
+    pczt.serialize().map(hex::encode).map_err(|e| {
+        ApiFailure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::new(
+                "encode_failed",
+                format!("the {stage} PCZT could not be encoded: {e:?}"),
+            ),
+        )
+    })
+}
+
+fn policy_from(body: &PcztRequest) -> Result<crate::split_sign::SignPolicy, ApiFailure> {
+    let max_total_zat = match body.max_total_zat.as_deref() {
+        Some(raw) => Some(parse_zat(raw, "maxTotalZat")?),
+        None => None,
+    };
+    Ok(crate::split_sign::SignPolicy {
+        allow_recipients: body.allow_recipients.clone(),
+        max_total_zat,
+    })
+}
+
+/// Read what a PCZT would do, without signing it.
+///
+/// Needs no key, so a view-only deployment can answer it. That is the point of separating
+/// review from signing: whoever decides whether to authorize a transaction should be able
+/// to see it without being able to sign it.
+async fn pczt_review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PcztRequest>,
+) -> ApiResult<crate::split_sign::SignReview> {
+    authorize(&headers, &state.api_token)?;
+
+    let pczt = parse_pczt(&body.pczt)?;
+    crate::split_sign::review(&pczt, state.wallet.network())
+        .map(Json)
+        .map_err(|e| {
+            ApiFailure(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ApiError::new("refused", e.to_string()),
+            )
+        })
+}
+
+/// Check a PCZT against a policy, then sign every Ironwood spend in it.
+///
+/// The policy is checked in full before any signature is produced, so a refusal never
+/// leaves a partially signed PCZT behind. `422` rather than `400` on refusal: the request
+/// was well-formed and the answer is no.
+async fn pczt_sign(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PcztRequest>,
+) -> ApiResult<PcztResponse> {
+    authorize(&headers, &state.api_token)?;
+
+    let pczt = parse_pczt(&body.pczt)?;
+    let policy = policy_from(&body)?;
+    let ask = state.wallet.spend_authorizing_key()?;
+
+    let (signed, review) = crate::split_sign::sign(pczt, &ask, &policy, state.wallet.network())
+        .map_err(|e| {
+            ApiFailure(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                ApiError::new("refused", e.to_string()),
+            )
+        })?;
+
+    Ok(Json(PcztResponse {
+        pczt: encode_pczt(signed, "signed")?,
+        review,
+        policy_applied: PolicyApplied {
+            recipients_restricted: !policy.allow_recipients.is_empty(),
+            max_total_zat: policy.max_total_zat.map(|v| v.to_string()),
+        },
+    }))
+}
+
+/// Add the Ironwood proof.
+///
+/// Needs no secret, only the proving key, so it belongs on the builder rather than the
+/// signer. Kept a separate route for that reason: the process holding the key should do as
+/// little as possible beyond holding it and deciding.
+async fn pczt_prove(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<PcztRequest>,
+) -> ApiResult<PcztResponse> {
+    authorize(&headers, &state.api_token)?;
+
+    let pczt = parse_pczt(&body.pczt)?;
+    let review = crate::split_sign::review(&pczt, state.wallet.network()).map_err(|e| {
+        ApiFailure(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            ApiError::new("refused", e.to_string()),
+        )
+    })?;
+    let proved = crate::split_sign::prove(pczt).map_err(|e| {
+        ApiFailure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ApiError::new("prove_failed", e.to_string()),
+        )
+    })?;
+
+    Ok(Json(PcztResponse {
+        pczt: encode_pczt(proved, "proved")?,
+        review,
+        policy_applied: PolicyApplied {
+            recipients_restricted: false,
+            max_total_zat: None,
+        },
+    }))
+}
+
 async fn send(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -528,6 +712,109 @@ mod tests {
             HeaderValue::from_str(value).unwrap(),
         );
         headers
+    }
+
+    // ------------------------------------------------------------------ PCZT plumbing
+    //
+    // The signing policy itself is tested in `split_sign`. What is worth testing here is
+    // the layer between HTTP and that module, because it is the layer that decides what a
+    // caller is allowed to leave out, and every field it defaults is a restriction the
+    // signer will not apply.
+
+    #[test]
+    fn a_pczt_that_is_not_hex_is_a_bad_request_and_says_so() {
+        let failure = match parse_pczt("not hex at all") {
+            Err(f) => f,
+            Ok(_) => panic!("non-hex input was accepted as a PCZT"),
+        };
+        assert_eq!(failure.0, StatusCode::BAD_REQUEST);
+        assert!(failure.1.message.contains("valid hex"), "{:?}", failure.1);
+    }
+
+    #[test]
+    fn valid_hex_that_is_not_a_pczt_is_refused_separately() {
+        // Distinguished from the above on purpose: "your encoding is wrong" and "your
+        // encoding is right and the contents are not a PCZT" send a caller to different
+        // places.
+        let failure = match parse_pczt("deadbeef") {
+            Err(f) => f,
+            Ok(_) => panic!("\"deadbeef\" was accepted as a PCZT"),
+        };
+        assert_eq!(failure.0, StatusCode::BAD_REQUEST);
+        assert!(
+            failure.1.message.contains("did not parse"),
+            "{:?}",
+            failure.1
+        );
+    }
+
+    #[test]
+    fn surrounding_whitespace_is_tolerated() {
+        // A hex blob arrives via copy and paste often enough that trimming it is kinder
+        // than a rejection that looks like a corrupted PCZT.
+        match parse_pczt(
+            "  deadbeef
+",
+        ) {
+            Err(f) => assert!(f.1.message.contains("did not parse"), "{:?}", f.1),
+            Ok(_) => panic!("whitespace-padded hex was accepted as a PCZT"),
+        }
+    }
+
+    #[test]
+    fn an_absent_policy_restricts_nothing() {
+        // The dangerous default, asserted so it cannot become accidental: omitting both
+        // fields is "any recipient, any amount". `/pczt/sign` reports this back in
+        // `policyApplied` rather than leaving a caller to assume otherwise.
+        let body = PcztRequest {
+            pczt: String::new(),
+            allow_recipients: vec![],
+            max_total_zat: None,
+        };
+        let policy = match policy_from(&body) {
+            Ok(p) => p,
+            Err(_) => panic!("an absent policy was rejected"),
+        };
+        assert!(policy.allow_recipients.is_empty());
+        assert!(policy.max_total_zat.is_none());
+    }
+
+    #[test]
+    fn a_policy_cap_is_parsed_as_zatoshis() {
+        let body = PcztRequest {
+            pczt: String::new(),
+            allow_recipients: vec!["u1abc".into()],
+            max_total_zat: Some("100000".into()),
+        };
+        let policy = match policy_from(&body) {
+            Ok(p) => p,
+            Err(_) => panic!("a valid policy was rejected"),
+        };
+        assert_eq!(policy.max_total_zat, Some(100_000));
+        assert_eq!(policy.allow_recipients, vec!["u1abc".to_string()]);
+    }
+
+    #[test]
+    fn a_cap_that_is_not_a_number_is_refused_rather_than_ignored() {
+        // Silently dropping an unparseable cap would turn a caller asking for a limit into
+        // a signer with none, which is the worst direction for this particular field.
+        for bad in ["abc", "-1", "1.5", "", " 100"] {
+            let body = PcztRequest {
+                pczt: String::new(),
+                allow_recipients: vec![],
+                max_total_zat: Some(bad.to_string()),
+            };
+            assert!(policy_from(&body).is_err(), "accepted maxTotalZat {bad:?}");
+        }
+    }
+
+    #[test]
+    fn every_pczt_route_requires_the_token() {
+        // They are on the same router and the same `authorize`, but signing is the one
+        // route where a missing check would be worst, so it is asserted rather than assumed.
+        for header in ["", "Bearer wrong", "correct-token-value"] {
+            assert!(authorize(&headers_with(header), "correct-token-value").is_err());
+        }
     }
 
     #[test]

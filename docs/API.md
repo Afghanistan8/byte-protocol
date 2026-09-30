@@ -234,6 +234,50 @@ over different addresses: `propose_shielding` selects inputs by address and offe
 UTXO-level knob, so a wallet with one transparent address cannot split and the client says
 so rather than quietly producing one transaction.
 
+### `POST /pczt/review`, `POST /pczt/sign`, `POST /pczt/prove`
+
+The split signer: read a transaction, decide, sign, prove. Separated because the process
+holding a spending key should do as little as possible beyond holding it and deciding, and
+because whoever authorizes a payment should be able to *see* it without being able to sign it.
+
+Every one takes a PCZT hex-encoded. Hex rather than base64 because `hex` is already a
+dependency, and the 1.33x base64 would save is not worth another crate in a signing path.
+
+```json
+{ "pczt": "50435a54…", "allowRecipients": ["u1…"], "maxTotalZat": "100000" }
+```
+
+**`/pczt/review`** needs no key, so a view-only deployment answers it. It reports what the
+transaction pays and how many Ironwood actions it holds:
+
+```json
+{ "outputs": [{ "recipient": "u1…", "amountZat": "50000" }],
+  "totalZat": "50000", "actionCount": 2 }
+```
+
+**`/pczt/sign`** checks the policy **in full, first**, then signs every Ironwood spend the
+key owns. A refusal therefore never leaves a partially signed PCZT behind, which is a worse
+thing to have lying around than an unsigned one. It answers `422` on refusal rather than
+`400`: the request was well-formed and the answer is no.
+
+```json
+{ "pczt": "50435a54…", "review": { … },
+  "policyApplied": { "recipientsRestricted": true, "maxTotalZat": "100000" } }
+```
+
+`policyApplied` is reported back because **omitting both fields permits any recipient and any
+amount**. That is the dangerous default, and a caller should be told what was applied rather
+than left to assume.
+
+**`/pczt/prove`** adds the Ironwood proof. It needs no secret, only the proving key, so it
+belongs on the builder rather than the signer.
+
+**What this does not do.** No PCZT has been built, signed, proved and broadcast on a real
+chain. The routes are exercised by unit tests and by hand against a running sidecar; the
+round trip is not proven. The `pczt` crate also exposes each output's recipient and value but
+**not a spend's**, so a review reports what is being *paid* and not what is being *spent*:
+the spend side cannot be audited from here.
+
 ### `POST /unshield`
 
 Send value out of Ironwood to a transparent address. **This publishes the amount** — ZIP 318
