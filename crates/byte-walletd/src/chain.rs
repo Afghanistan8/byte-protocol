@@ -30,10 +30,11 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use rand::rngs::OsRng;
 use zcash_client_backend::data_api::{
-    wallet::ConfirmationsPolicy, AccountBirthday, AccountPurpose, WalletRead, WalletWrite,
+    wallet::decrypt_and_store_transaction, wallet::ConfirmationsPolicy, AccountBirthday,
+    AccountPurpose, TransactionDataRequest, TransactionStatus, WalletRead, WalletWrite,
 };
 use zcash_client_backend::proto::service::{
-    compact_tx_streamer_client::CompactTxStreamerClient, BlockId,
+    compact_tx_streamer_client::CompactTxStreamerClient, BlockId, TxFilter,
 };
 use zcash_client_backend::wallet::NoteId;
 use zcash_client_sqlite::util::SystemClock;
@@ -205,6 +206,9 @@ impl LightwalletdChain {
         .await
         .map_err(|e| ChainError::Lightwalletd(e.to_string()))?;
 
+        // Scanning alone is not enough to read a memo. See `enhance_transactions`.
+        enhance_transactions(&mut client, &self.network, &mut db).await?;
+
         let scanned = db
             .block_max_scanned()
             .map_err(|e| ChainError::Db(e.to_string()))?
@@ -359,6 +363,142 @@ impl ChainData for LightwalletdChain {
 fn open_wallet_db(network: Network, path: &Path) -> Result<ByteWalletDb, ChainError> {
     WalletDb::for_path(path, network.params(), SystemClock, OsRng)
         .map_err(|e| ChainError::Db(e.to_string()))
+}
+
+/// Download the full transactions the wallet has asked for, and store what they contain.
+///
+/// # Why this exists, and what broke without it
+///
+/// A light wallet scans **compact blocks**, and a compact block deliberately omits memos:
+/// it carries just enough of each output to trial-decrypt it. So scanning finds the note,
+/// the value and the recipient, and leaves the memo field null. The memo arrives only if
+/// the wallet afterwards fetches the whole transaction — "enhancement" — and decrypts it.
+///
+/// byte-walletd never did. Every payment it had ever verified was one it had also *sent*,
+/// so the memo was already in its own `sent_notes` table and no enhancement was needed. The
+/// first payment from somebody else's wallet arrived mined, confirmed, correct and
+/// memo-less, and the verifier rejected it as `invalid_payment` because a memo is what
+/// binds a note to an invoice. Byte could not have verified any third-party payment at all.
+///
+/// The test suite could not have caught this: the mock chain has no notion of a compact
+/// block, so its memos are simply present. Neither could the earlier testnet runs, which
+/// state in `docs/TESTNET_RUNS.md` that both roles ran against one wallet — that limitation
+/// was hiding a bug, not merely narrowing a claim.
+///
+/// # What it does
+///
+/// The backend keeps a queue of what it still needs, so this drains that queue rather than
+/// guessing. `Enhancement` is answered with the raw transaction; `GetStatus` with whether
+/// the chain has it. A transaction the server cannot supply is reported as such rather than
+/// left pending forever, which would make the queue grow without bound.
+///
+/// Errors here are not fatal to a sync. A wallet that scanned correctly but could not reach
+/// the server for one transaction is behind, not broken, and the next pass will try again.
+async fn enhance_transactions(
+    client: &mut CompactTxStreamerClient<tonic::transport::Channel>,
+    network: &Network,
+    db: &mut ByteWalletDb,
+) -> Result<(), ChainError> {
+    let requests = db
+        .transaction_data_requests()
+        .map_err(|e| ChainError::Db(e.to_string()))?;
+
+    for request in requests {
+        match request {
+            TransactionDataRequest::Enhancement(txid) => {
+                match fetch_transaction(client, network, txid).await {
+                    Ok(Some((tx, height))) => {
+                        decrypt_and_store_transaction(&network.params(), db, &tx, height)
+                            .map_err(|e| ChainError::Db(e.to_string()))?;
+                        tracing::debug!(txid = %txid, "enhanced transaction");
+                    }
+                    Ok(None) => {
+                        // Tell the backend, or it will ask again on every sync forever.
+                        db.set_transaction_status(txid, TransactionStatus::TxidNotRecognized)
+                            .map_err(|e| ChainError::Db(e.to_string()))?;
+                    }
+                    Err(e) => {
+                        tracing::warn!(txid = %txid, error = %e, "could not enhance transaction");
+                    }
+                }
+            }
+            TransactionDataRequest::GetStatus(txid) => {
+                let status = match fetch_transaction(client, network, txid).await {
+                    Ok(Some((_, Some(height)))) => TransactionStatus::Mined(height),
+                    Ok(Some((_, None))) => TransactionStatus::NotInMainChain,
+                    Ok(None) => TransactionStatus::TxidNotRecognized,
+                    Err(e) => {
+                        tracing::warn!(txid = %txid, error = %e, "could not read transaction status");
+                        continue;
+                    }
+                };
+                db.set_transaction_status(txid, status)
+                    .map_err(|e| ChainError::Db(e.to_string()))?;
+            }
+            // Transparent address history. Byte spends and receives shielded, and the
+            // transparent path is only ever a deposit being swept, so leaving this to the
+            // next sync costs nothing that matters here.
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+/// Fetch one whole transaction by txid, with the height it was mined at.
+///
+/// `Ok(None)` means the server does not know the transaction, which is a real answer and
+/// not an error: a mempool transaction that never made it, or one from before the wallet's
+/// birthday.
+async fn fetch_transaction(
+    client: &mut CompactTxStreamerClient<tonic::transport::Channel>,
+    network: &Network,
+    txid: zcash_protocol::TxId,
+) -> Result<
+    Option<(
+        zcash_primitives::transaction::Transaction,
+        Option<zcash_protocol::consensus::BlockHeight>,
+    )>,
+    ChainError,
+> {
+    // GetTransaction takes the txid in **internal** byte order, which is the reverse of the
+    // order it is displayed in. The same reversal caught Byte out once before, in the very
+    // first testnet run, where a lookup by displayed txid silently returned nothing.
+    let response = client
+        .get_transaction(TxFilter {
+            hash: txid.as_ref().to_vec(),
+            ..Default::default()
+        })
+        .await;
+
+    let raw = match response {
+        Ok(r) => r.into_inner(),
+        Err(status) if status.code() == tonic::Code::NotFound => return Ok(None),
+        // lightwalletd reports an unknown txid as an error string rather than a code.
+        Err(status) if status.message().contains("not found") => return Ok(None),
+        Err(status) => return Err(ChainError::Lightwalletd(status.to_string())),
+    };
+
+    if raw.data.is_empty() {
+        return Ok(None);
+    }
+
+    let height = u32::try_from(raw.height)
+        .ok()
+        .filter(|h| *h > 0)
+        .map(zcash_protocol::consensus::BlockHeight::from);
+
+    // A transaction is parsed against the consensus branch in force where it was mined.
+    // Using the tip's branch for an older transaction would fail to parse it.
+    let branch = zcash_protocol::consensus::BranchId::for_height(
+        &network.params(),
+        height.unwrap_or_else(|| zcash_protocol::consensus::BlockHeight::from_u32(u32::MAX)),
+    );
+
+    let tx = zcash_primitives::transaction::Transaction::read(&raw.data[..], branch)
+        .map_err(|e| ChainError::Lightwalletd(format!("parsing transaction {txid}: {e}")))?;
+
+    Ok(Some((tx, height)))
 }
 
 async fn connect(

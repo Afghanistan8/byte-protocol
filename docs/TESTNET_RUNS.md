@@ -246,6 +246,12 @@ Being specific, because it would be easy to read more into this than it carries.
 - **The recipient address is recorded only as the wallet displayed it**, truncated. I did not
   keep the full address, so this entry cannot assert who was paid.
 
+### One of these was not a limitation
+
+The line in run 2, repeated in this one, that both roles ran against one wallet, reads like
+a narrowed claim. It was concealing a defect that made Byte unable to accept a payment from
+anybody at all. Found on 2026-09-30 by the mainnet run below, and fixed there.
+
 ### Closing these three gaps
 
 All three limits above come from the same cause: a static page has no wallet and no viewing
@@ -300,3 +306,98 @@ added Ironwood support in "v0.1.26, 27 Jul 2026". The repository publishes no `v
 release at all — its tags start at `v1.0.3`. Ironwood is named in **v1.0.26 (23 Jul 2026)**
 and **v1.0.27 (28 Jul 2026)**. Corrected in `docs/TOOLCHAIN.md`, which also records what the
 old row claimed and that it was wrong.
+
+---
+
+## 2026-09-30 — mainnet, two separate wallets, and the defect that only this could find
+
+The first Byte payment on **mainnet**, and the first paid by a wallet that is not the
+seller. Asuzu's call to move here, over my advice, and it was the right call: the run found
+a defect that made Byte unable to verify a payment from anyone else's wallet at all.
+
+| | |
+|---|---|
+| Network | `zcash:00040fe8ec8471911baa1db1266ea15d` (mainnet) |
+| NU6.3 activation | 3,428,143, so Ironwood is live |
+| Light server | `https://zec.rocks:443` |
+| Payer | Noir, `u1s5v6…dprs79`, funded by Asuzu |
+| Seller | a `byte-walletd` whose seed was generated an hour earlier and which held nothing |
+| Invoice | `9831c7896fd7cf3e83df3dd828f096ba`, 100,000 zat |
+| txid | `a6eb7a4e2845d16ffeaae78a672334c66754e8e809bc2d2861e453826ca35a94` |
+| Mined | block 3,501,656, fee 10,000 zat |
+
+Paid to, in full, and minted for this invoice alone:
+
+```
+u1cehhzpjevhu6mrmaxs8qkucygrlumsm6myzc4j3fct6m9w202pyqydvfq4tl67ngrckz3jurgx2yxgadaj0gs7mxajpeeqvtkgeqcrjt
+```
+
+Read back off the chain with the seller's viewing key:
+
+```json
+[{"txid":"a6eb7a4e2845d16ffeaae78a672334c66754e8e809bc2d2861e453826ca35a94",
+  "pool":"ironwood","valueZat":"100000",
+  "memo":"BYTE1|9831c7896fd7cf3e83df3dd828f096ba|f22e57dcd8840a5105a248417054516a",
+  "confirmations":11,"height":3501656}]
+```
+
+The memo is byte-identical to the one the payer's wallet displayed. `everyOutputInIronwood`
+is true: nothing crossed a pool, so ZIP 318 revealed no net amount. A second settle attempt
+was refused as `replay`, which is the invoice behaving correctly.
+
+| Limit recorded by the earlier browser run | Closed by |
+|---|---|
+| No seller verified it | A real `PaymentVerifier` checked the amount, the memo binding and the confirmations against the invoice it had issued |
+| The memo was not read back off the chain | It was, with the seller's viewing key, and it matches |
+| The recipient was recorded truncated | Recorded in full, above |
+
+And one no previous run could claim: **two genuinely separate wallets**. Runs 1, 2 and 3 all
+had one wallet paying itself.
+
+### The defect: Byte could not verify a payment from anyone else
+
+The first attempt failed. The payment was mined, confirmed, in Ironwood, for the right
+amount, at the right address, and the verifier answered `invalid_payment` every time.
+
+The wallet database said why:
+
+```
+ironwood_received_notes: value 100000, memo NULL
+transactions:            mined_height 3501656, raw NULL
+```
+
+A light wallet scans **compact blocks**, and a compact block deliberately omits memos: it
+carries only enough of each output to trial-decrypt it. The memo arrives only if the wallet
+afterwards downloads the whole transaction and decrypts it, a step called **enhancement**.
+`byte-walletd` never did. `raw NULL` is that, recorded.
+
+So the note arrived, decrypted, and had no memo. A Byte memo is what binds a payment to an
+invoice, so with no memo there is nothing to verify, and the payment is indistinguishable
+from a stranger sending money for no reason.
+
+**Every payment Byte had ever verified was one it had also sent.** The memo was already in
+its own `sent_notes` table, and no enhancement was needed. The defect was invisible for as
+long as, and only as long as, Byte was talking to itself.
+
+Fixed in `chain.rs` by `enhance_transactions`, which drains the backend's own queue of
+outstanding data requests rather than guessing: `Enhancement` answered with the raw
+transaction through `GetTransaction` and `decrypt_and_store_transaction`, `GetStatus` with
+whether the chain has it, and a transaction the server cannot supply reported as such rather
+than left pending forever. The transaction is parsed against the consensus branch in force
+at the height it was mined, not the tip's.
+
+The fix needed no second payment. On the next sync the queue was drained, the memo appeared,
+and the seller settled the invoice that had been failing for twenty minutes.
+
+### Why nothing caught it
+
+- **The test suite could not.** The mock chain has no notion of a compact block, so a mock
+  memo is simply present. 844 passing tests had nothing to say about this.
+- **The earlier runs could not.** Runs 1 and 2 each record that both roles ran against one
+  wallet. I wrote that as a narrowed claim. It was hiding a defect.
+- **A second `byte-walletd` as payer would not have.** It would have been a different wallet
+  and the same code, and the receiving side would still have had the memo in `sent_notes`.
+
+Only a wallet that Byte did not write, paying it over a real light-client connection, could
+expose this. That is the argument for this run, and it is worth more than the run's own
+result.
