@@ -305,6 +305,15 @@
             transparent would publish the amount, so this refuses rather than falling back,
             exactly as the protocol does.
           </p>
+          <div class="note hide" id="seller-box" style="margin-bottom:16px">
+            <strong>A Byte seller is running here.</strong>
+            This page was served by one, so it can hand you a <strong>real</strong> invoice:
+            minted by the seller, bound to its own key, and verified by the seller once you
+            pay. Nothing below is needed for that.
+            <button class="btn small" id="sell-get" style="margin-top:11px">Get a real invoice</button>
+            <div id="sell-result" style="margin-top:12px"></div>
+          </div>
+
           <div class="note" style="margin-bottom:16px">
             <strong>No invoice yet? Make a practice one.</strong>
             Choose where to send it and how much, and this page builds a Byte-format invoice
@@ -976,10 +985,25 @@
       }
     ])
       .then(function (txid) {
+        // The full recipient, not the wallet's truncated display of it. The first browser
+        // run could not say who had been paid, because nothing here wrote it down.
         out.innerHTML =
-          '<div class="note good"><strong>Sent.</strong><br><span class="mono">' +
-          escapeHtml(String(txid)) +
-          "</span></div>";
+          '<div class="note good"><strong>Sent.</strong><br>' +
+          '<strong>Transaction</strong><br><span class="mono" style="word-break:break-all">' +
+          escapeHtml(String(txid)) + "</span><br><br>" +
+          '<strong>Paid to, in full</strong><br><span class="mono" style="word-break:break-all">' +
+          escapeHtml(parsed.address) + "</span><br><br>" +
+          "<strong>Amount</strong> " + escapeHtml(parsed.amountZec) + " ZEC" +
+          (parsed.memo === undefined || parsed.memo === null
+            ? ""
+            : '<br><br><strong>Memo</strong><br><span class="mono" style="word-break:break-all">' +
+              escapeHtml(String(parsed.memo)) + "</span>") +
+          "</div>" +
+          '<div id="settle-result" style="margin-top:10px"></div>';
+
+        // If this invoice came from a real seller, ask it to verify. That is the only way
+        // this page can show a payment was *settled* rather than merely broadcast.
+        if (sellerInvoice !== null) askSellerToVerify(String(txid), el("settle-result"));
       })
       .catch(function (error) {
         var message = error && error.message ? error.message : "unknown error";
@@ -1095,6 +1119,148 @@
       "4. <strong>Right network?</strong> The faucet coins and this wallet must both be testnet.<br><br>" +
       '<span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
     );
+  }
+
+  /* -------------------------------------------------------------- a real seller
+   *
+   * The practice invoice below proves the wallet leg and nothing else: its memo is built
+   * against a fixed demo key, so no seller issued it and nothing will ever mark it paid.
+   * That limit was written into docs/TESTNET_RUNS.md for the first browser run, along with
+   * two others — the memo was never read back off the chain, and the recipient was recorded
+   * only as the wallet displayed it, truncated.
+   *
+   * All three come from the same cause: a static page has no wallet and no viewing key, so
+   * it can neither issue an invoice nor read a payment. `pnpm seller:testnet` runs one that
+   * can, and serves this page from its own origin. When that is what served the page, the
+   * box above appears and this code talks to it.
+   *
+   * Same origin on purpose: the deployed site is HTTPS, a local seller is HTTP, and a
+   * browser blocks that as mixed content rather than asking.
+   */
+
+  /** The seller that served this page, or null when a static host did. */
+  function sellerOrigin() {
+    if (typeof window === "undefined") return null;
+    var origin = window.location.origin;
+    if (!/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(origin)) return null;
+    return origin;
+  }
+
+  /** The invoice currently being paid, so a settlement can be reported against it. */
+  var sellerInvoice = null;
+
+  function detectSeller() {
+    var origin = sellerOrigin();
+    if (origin === null) return;
+    // Asking rather than assuming: this page can be served by any local static server, and
+    // one that answers 404 here is not a seller.
+    fetch(origin + "/invoice", { method: "OPTIONS" })
+      .then(function (r) {
+        if (r.ok || r.status === 204) el("seller-box").classList.remove("hide");
+      })
+      .catch(function () { /* not a seller; the practice box is still there */ });
+  }
+
+  el("sell-get").addEventListener("click", function () {
+    var out = el("sell-result");
+    var origin = sellerOrigin();
+    if (origin === null) return;
+
+    out.innerHTML = '<div class="note"><span class="spin">&#9676;</span> Asking the seller&hellip;</div>';
+    fetch(origin + "/invoice", { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .then(function (invoice) {
+        if (typeof invoice.zip321 !== "string") throw new Error("the seller sent no ZIP-321 request");
+        sellerInvoice = invoice;
+        el("noir-uri").value = invoice.zip321;
+        out.innerHTML =
+          '<div class="note good"><strong>Real invoice.</strong> Press ' +
+          "<strong>Review in Noir</strong> below. When it is paid, the seller will verify it " +
+          "and read the payment back off the chain.</div>" +
+          '<div class="note" style="margin-top:8px">' +
+          "<strong>Invoice</strong> <span class=\"mono\">" + escapeHtml(invoice.invoiceId) + "</span><br>" +
+          "<strong>Amount</strong> " + escapeHtml(invoice.amount) + " zatoshis<br>" +
+          "<strong>Pays to</strong> <span class=\"mono\" style=\"word-break:break-all\">" +
+          escapeHtml(invoice.payTo) + "</span></div>";
+      })
+      .catch(function (error) {
+        out.innerHTML =
+          '<div class="note bad">Could not get an invoice: ' +
+          escapeHtml(error && error.message ? error.message : "unknown error") + "</div>";
+      });
+  });
+
+  /**
+   * Ask the seller whether a payment settled its invoice, and show what it found.
+   *
+   * It polls, because a seller that requires a confirmation cannot answer yes immediately.
+   * A `valid: false` here is not a failure: until the payment is mined it is the only
+   * truthful answer, which is the same reason the x402 gate answers `402 pending`.
+   */
+  function askSellerToVerify(txid, into) {
+    var origin = sellerOrigin();
+    if (origin === null || sellerInvoice === null) return;
+    var invoiceId = sellerInvoice.invoiceId;
+    var payTo = sellerInvoice.payTo;
+    var deadline = Date.now() + 20 * 60 * 1000;
+
+    function attempt() {
+      fetch(origin + "/settle", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ invoiceId: invoiceId, txid: txid })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (result) {
+          if (result.ok !== true) {
+            if (Date.now() > deadline) {
+              into.innerHTML =
+                '<div class="note bad">The seller did not confirm this payment in time. ' +
+                "Last answer: " + escapeHtml(JSON.stringify(result)) + "</div>";
+              return;
+            }
+            into.innerHTML =
+              '<div class="note"><span class="spin">&#9676;</span> Paid. Waiting for the ' +
+              "seller to see it confirm on the chain&hellip;<br>" +
+              '<span class="muted">' + escapeHtml(String(result.reason || "not yet")) +
+              "</span></div>";
+            setTimeout(attempt, 20000);
+            return;
+          }
+
+          var rows = (result.outputs || []).map(function (o) {
+            return (
+              "<tr><td>" + escapeHtml(o.pool) + "</td><td>" + escapeHtml(o.valueZat) +
+              "</td><td>" + escapeHtml(String(o.confirmations)) + "</td><td class=\"mono\">" +
+              (o.memo === null ? '<span class="muted">no memo</span>' : escapeHtml(o.memo)) +
+              "</td></tr>"
+            );
+          }).join("");
+
+          into.innerHTML =
+            '<div class="note good"><strong>The seller verified this payment.</strong><br>' +
+            "It checked the amount, the memo binding and the confirmations against its own " +
+            "record of the invoice it issued. Nobody had to take the payer's word for it." +
+            "</div>" +
+            '<div class="note" style="margin-top:8px"><strong>Read back off the chain, ' +
+            "with the seller's viewing key:</strong>" +
+            '<table style="width:100%;margin-top:8px"><tr><th>Pool</th><th>Zatoshis</th>' +
+            "<th>Conf</th><th>Memo</th></tr>" + rows + "</table>" +
+            "<br>Every output in Ironwood: <strong>" +
+            (result.everyOutputInIronwood ? "yes" : "NO") + "</strong>. " +
+            "Nothing crossed a pool, so ZIP 318 revealed no net amount." +
+            "<br><br><strong>Paid to, in full:</strong><br>" +
+            '<span class="mono" style="word-break:break-all">' +
+            escapeHtml(String(result.payTo || payTo)) + "</span></div>";
+        })
+        .catch(function (error) {
+          into.innerHTML =
+            '<div class="note bad">Could not reach the seller: ' +
+            escapeHtml(error && error.message ? error.message : "unknown error") + "</div>";
+        });
+    }
+
+    attempt();
   }
 
   /* ------------------------------------------------------------ practice invoice */
@@ -1503,6 +1669,7 @@
 
   renderWallets();
   watchForNoir();
+  detectSeller();
   detectSnap();
 })();
 </script>

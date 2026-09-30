@@ -199,7 +199,7 @@ Recorded 2026-09-29 on the build machine (Windows 11).
 | npm | 11.12.1 |
 | pnpm | 12.6.0 (installed 2026-09-29) |
 | git | 2.54.0.windows.1 |
-| Rust | **not installed** — required for `crates/byte-walletd` |
+| Rust | 1.98.1 — required for `crates/byte-walletd`, and its 66 tests run |
 
 ## Build verification
 

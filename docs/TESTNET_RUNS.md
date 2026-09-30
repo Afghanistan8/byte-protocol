@@ -246,6 +246,22 @@ Being specific, because it would be easy to read more into this than it carries.
 - **The recipient address is recorded only as the wallet displayed it**, truncated. I did not
   keep the full address, so this entry cannot assert who was paid.
 
+### Closing these three gaps
+
+All three limits above come from the same cause: a static page has no wallet and no viewing
+key, so it can neither issue an invoice nor read a payment back. `pnpm seller:testnet` runs
+one that can — a real `InvoiceIssuer` and `PaymentVerifier` against the sidecar — and serves
+the dashboard from its own origin, which is also what keeps a browser from refusing an HTTPS
+page's calls to an HTTP seller as mixed content.
+
+With it running, the page fetches a real invoice, the wallet pays it, and the seller verifies
+it and reads the payment back off the chain with its own viewing key, reporting the pool, the
+value, the confirmations, the memo and the full recipient address.
+
+The routes are tested against the mock chain in `scripts/seller-routes.test.ts` (16), so the
+seller is not a thing whose only trial is a live run with real money. **A run through it is
+not yet logged here**; when one happens it belongs below, with its txid.
+
 ### Four defects this run caught
 
 None of these could have been found by the test suite. Every one of them needed a person,

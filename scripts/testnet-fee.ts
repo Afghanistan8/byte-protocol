@@ -200,8 +200,8 @@ async function main(): Promise<void> {
 
   step(5, "Verify it as the facilitator would");
   const result = await verifier.verify(invoice.invoiceId, paid.txid);
-  line(`    valid: ${result.valid}`);
-  if (!result.valid) {
+  line(`    accepted: ${result.ok}`);
+  if (!result.ok) {
     throw new Error(`FAILED: the verifier rejected this payment: ${JSON.stringify(result)}`);
   }
 
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
         ? `${notes.length} output(s), no pool crossed, nothing revealed under ZIP 318`
         : `${outsideIronwood.length} output(s) outside: ${outsideIronwood.map((n) => n.pool).join(", ")}`,
     ],
-    ["the verifier accepted it", result.valid, "checked the amount, the memo and the fee"],
+    ["the verifier accepted it", result.ok, "checked the amount, the memo and the fee"],
   ];
 
   let failed = 0;
