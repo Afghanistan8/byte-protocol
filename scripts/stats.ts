@@ -21,9 +21,20 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 export interface Stats {
   /** RFC 3339 UTC, when this was measured. */
   measuredAt: string;
-  typescript: { files: number; tests: number };
+  typescript: {
+    files: number;
+    /** Tests that ran and passed. Skipped ones are counted separately, never here. */
+    tests: number;
+    /**
+     * Tests that did not run, such as the live rail test without `BYTE_RAILS_LIVE=1`.
+     *
+     * Counted apart because a skipped test proves nothing, and folding it into the total
+     * would inflate the number Byte quotes with work that never happened.
+     */
+    skipped: number;
+  };
   rust: { tests: number };
-  /** The number a human should quote. */
+  /** The number a human should quote: passing tests only. */
   total: number;
 }
 
@@ -80,27 +91,72 @@ function runVitest(): string {
   }
 }
 
+/**
+ * Pull the counts out of vitest's summary.
+ *
+ * Exported so it can be tested against the shapes vitest actually emits without running the
+ * suite. It decides the number Byte publishes, so its failure modes matter more than its
+ * happy path.
+ *
+ * Vitest's summary gains segments as a run acquires skips or failures:
+ *
+ * ```
+ * Test Files  29 passed (29)
+ * Tests  598 passed | 5 skipped (603)
+ * Tests  1 failed | 530 passed (531)
+ * ```
+ *
+ * Parsed segment by segment rather than by one fixed shape. The first version matched only
+ * `N passed (N)` and broke the moment the live rail test started skipping itself, which is a
+ * normal state for this suite and not a failure.
+ */
+export function parseVitestSummary(output: string): Stats["typescript"] {
+  const files = /Test Files\s+(\d+) passed \((\d+)\)/.exec(output);
+  const testsLine = /^\s*Tests\s+(.+?)\s*$/m.exec(output);
+
+  if (files === null || testsLine === null) {
+    throw new Error(`could not find a test summary in vitest output:\n${output.slice(-2000)}`);
+  }
+
+  const summary = testsLine[1] as string;
+  const segment = (name: string): number => {
+    const found = new RegExp(`(\\d+) ${name}`).exec(summary);
+    return found === null ? 0 : Number(found[1]);
+  };
+
+  const passed = segment("passed");
+  const skipped = segment("skipped");
+  const failed = segment("failed");
+  const todo = segment("todo");
+  const total = Number(/\((\d+)\)\s*$/.exec(summary)?.[1] ?? "0");
+
+  if (failed > 0) throw new Error(`not every test passed: Tests ${summary}`);
+
+  // Every test must be accounted for. This is the check that matters: a segment this parser
+  // does not know about would otherwise vanish from the count Byte publishes, silently.
+  if (passed + skipped + todo !== total) {
+    throw new Error(
+      `could not account for every test (${passed} passed + ${skipped} skipped + ` +
+        `${todo} todo != ${total}): Tests ${summary}`,
+    );
+  }
+
+  // An import-time crash fails a file without failing a test, so files are checked too.
+  if (files[1] !== files[2]) {
+    throw new Error(`not every test file passed: ${files[0]}`);
+  }
+
+  // `tests` is passing tests only. A skipped test proves nothing, and counting it would
+  // inflate the number Byte quotes with work that never ran.
+  return { files: Number(files[1]), tests: passed, skipped };
+}
+
 function countTypescript(): Stats["typescript"] {
   // BYTE_STATS_REFRESH tells the consistency test not to compare surfaces to STATS.json
   // during this run. Without it the command that fixes a stale surface could never start:
   // the stale surface fails the suite, and a failing suite refuses to write the counts.
   // The next ordinary `vitest run` does the comparison.
-  const output = runVitest();
-
-  // "Test Files  25 passed (25)" / "Tests  503 passed (503)"
-  const files = /Test Files\s+(\d+) passed \((\d+)\)/.exec(output);
-  const tests = /Tests\s+(\d+) passed \((\d+)\)/.exec(output);
-
-  if (files === null || tests === null) {
-    throw new Error(`could not find a passing summary in vitest output:\n${output.slice(-2000)}`);
-  }
-  // A run where passed < total means something failed or was skipped. Recording the
-  // passing count alone would quietly overstate the suite.
-  if (files[1] !== files[2] || tests[1] !== tests[2]) {
-    throw new Error(`not every test passed: ${files[0]}, ${tests[0]}`);
-  }
-
-  return { files: Number(files[1]), tests: Number(tests[1]) };
+  return parseVitestSummary(runVitest());
 }
 
 function countRust(): Stats["rust"] {

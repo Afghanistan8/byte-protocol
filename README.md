@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**<!--stats:total-->591<!--/stats--> tests pass**: <!--stats:ts-->531<!--/stats--> TypeScript, <!--stats:rust-->60<!--/stats--> Rust.
+**<!--stats:total-->666<!--/stats--> tests pass**: <!--stats:ts-->606<!--/stats--> TypeScript, <!--stats:rust-->60<!--/stats--> Rust.
 
 ---
 
