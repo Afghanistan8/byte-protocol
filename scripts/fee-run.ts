@@ -1,10 +1,10 @@
 /**
  * A fee-carrying invoice, paid in one shielded transaction, against real Zcash testnet.
  *
- *   BYTE_TESTNET=1 \
+ *   BYTE_TESTNET=1 \      # or BYTE_MAINNET=1 for the real chain
  *   BYTE_WALLETD_URL=http://127.0.0.1:8137 \
  *   BYTE_WALLETD_TOKEN=... \
- *   pnpm test:testnet:fee
+ *   pnpm run:fee
  *
  * ## What this proves that the other runs do not
  *
@@ -38,16 +38,16 @@
  * from the same sidecar that pays. It shows the transaction shape, not two parties.
  */
 
-import {
-  NETWORK_TESTNET,
-  feeZatFor,
-  newMemoSecret,
-  parseZat,
-} from "@byte-protocol/core";
+import { feeZatFor, newMemoSecret, parseZat } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
 import { InvoiceIssuer, PaymentVerifier } from "@byte-protocol/server";
 import { BytePayer, SpendGuard } from "@byte-protocol/client";
 import { WalletdWallet } from "@byte-protocol/wallet";
+import {
+  assertWalletMatches,
+  chooseNetwork,
+  mainnetBanner,
+} from "./network-guard.js";
 
 /** What the payee is owed. The fee is added on top, never taken out of this. */
 const PRICE_ZAT = process.env.BYTE_TESTNET_PRICE ?? "50000";
@@ -104,12 +104,14 @@ async function waitForConfirmations(
 }
 
 async function main(): Promise<void> {
-  if (process.env.BYTE_TESTNET !== "1") {
-    line("Refusing to run: set BYTE_TESTNET=1.");
-    line("This spends real TAZ against Zcash testnet and takes several minutes.");
-    process.exitCode = 1;
-    return;
-  }
+  const choice = chooseNetwork();
+  // An upper bound, not the exact fee: `feeZatFor` needs the fee address, and that is
+  // minted from a wallet this has not connected to yet. Ceiling division on the capped
+  // rate can never exceed this, so the warning is never an understatement, which is the
+  // direction that matters when the number is what someone is agreeing to spend.
+  const upperBound =
+    parseZat(PRICE_ZAT) + (parseZat(PRICE_ZAT) * BigInt(FEE_BPS) + 9_999n) / 10_000n + 20_000n;
+  for (const warning of mainnetBanner(choice, upperBound.toString(10))) line(warning);
 
   const url = process.env.BYTE_WALLETD_URL ?? "http://127.0.0.1:8137";
   const token = requireEnv("BYTE_WALLETD_TOKEN");
@@ -117,23 +119,21 @@ async function main(): Promise<void> {
   step(1, "Connect to byte-walletd");
   const wallet = await WalletdWallet.connect({ url, token });
   const status = await wallet.status();
-  line(`    network ${wallet.network}`);
+  line(`    network ${wallet.network} (${choice.name})`);
   line(`    synced ${status.synced} at block ${status.syncedHeight}`);
 
   if (!status.synced) throw new Error("the wallet is not synced; wait and try again");
-  if (wallet.network !== NETWORK_TESTNET) {
-    // Refusing rather than warning: this script spends.
-    throw new Error(`refusing to run against ${wallet.network}; this script is testnet-only`);
-  }
+  // Refusing rather than warning: this script spends, and on mainnet it spends for real.
+  assertWalletMatches(choice, wallet.network);
 
-  const expectedFee = feeZatFor(PRICE_ZAT, { bps: FEE_BPS, payTo: "" });
-  const needed = parseZat(PRICE_ZAT) + parseZat(expectedFee) + 20_000n;
   const balance = await wallet.balance();
   line(`    spendable ${balance.spendableZat} zat`);
-  if (parseZat(balance.spendableZat) < needed) {
+  if (parseZat(balance.spendableZat) < upperBound) {
     throw new Error(
-      `not enough spendable value: have ${balance.spendableZat}, need about ${needed}. ` +
-        "Fund the wallet from a faucet — see docs/TESTNET_RUNS.md.",
+      `not enough spendable value: have ${balance.spendableZat}, need about ${upperBound}. ` +
+        (choice.real
+          ? "Fund the wallet with real ZEC, or lower BYTE_TESTNET_PRICE."
+          : "Fund the wallet from a faucet — see docs/TESTNET_RUNS.md."),
     );
   }
 
@@ -153,6 +153,7 @@ async function main(): Promise<void> {
   });
   const verifier = new PaymentVerifier({ wallet, store, secret });
 
+  const expectedFee = feeZatFor(PRICE_ZAT, { bps: FEE_BPS, payTo: feeAddress });
   const invoice = await issuer.issue(PRICE_ZAT);
   if (invoice.fee === undefined) {
     throw new Error("the issuer produced no fee output; nothing to prove");
@@ -174,7 +175,7 @@ async function main(): Promise<void> {
 
   step(3, "Pay it — one transaction, two outputs");
   const guard = new SpendGuard({
-    maxPerCallZat: String(needed),
+    maxPerCallZat: String(upperBound),
     maxDailyZat: "10000000",
     allow: ["127.0.0.1"],
   });

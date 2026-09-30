@@ -249,7 +249,7 @@ Being specific, because it would be easy to read more into this than it carries.
 ### Closing these three gaps
 
 All three limits above come from the same cause: a static page has no wallet and no viewing
-key, so it can neither issue an invoice nor read a payment back. `pnpm seller:testnet` runs
+key, so it can neither issue an invoice nor read a payment back. `pnpm seller` runs
 one that can — a real `InvoiceIssuer` and `PaymentVerifier` against the sidecar — and serves
 the dashboard from its own origin, which is also what keeps a browser from refusing an HTTPS
 page's calls to an HTTP seller as mixed content.

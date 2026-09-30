@@ -1,7 +1,7 @@
 /**
  * The seller's HTTP surface, separated from the process that runs it.
  *
- * `testnet-seller.ts` reads the environment, connects to the sidecar and listens on a
+ * `seller.ts` reads the environment, connects to the sidecar and listens on a
  * port. None of that can be exercised without a funded wallet and a real chain, so the
  * part that decides what the seller *says* lives here instead, where a test can drive it
  * against the mock wallet.

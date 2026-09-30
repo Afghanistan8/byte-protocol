@@ -1,5 +1,5 @@
 /**
- * The seller that `pnpm seller:testnet` runs, driven against the mock chain.
+ * The seller that `pnpm seller` runs, driven against the mock chain.
  *
  * The point of that script is to close the three limits the first browser run recorded:
  * no seller verified the payment, the memo was never read back off the chain, and the

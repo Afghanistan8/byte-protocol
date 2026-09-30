@@ -2,12 +2,16 @@
  * A real Byte seller, and the dashboard served next to it, so a browser wallet can settle
  * a real invoice.
  *
- *   BYTE_TESTNET=1 \
+ *   BYTE_TESTNET=1 \      # or BYTE_MAINNET=1 for the real chain
  *   BYTE_WALLETD_URL=http://127.0.0.1:8137 \
  *   BYTE_WALLETD_TOKEN=... \
- *   pnpm seller:testnet
+ *   pnpm seller
  *
- * Then open <http://127.0.0.1:8402/> and pay from Noir.
+ * Then open <http://127.0.0.1:8402/> and pay from any Zcash wallet.
+ *
+ * On mainnet this mints invoices for **real ZEC**. The seller only ever receives, so its
+ * own wallet needs no funds and holds a spending key to nothing until someone pays it.
+ * The payer is where the real money is, and the payer is not this process.
  *
  * ## The three gaps this closes
  *
@@ -39,11 +43,17 @@
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { NETWORK_TESTNET, newMemoSecret, parseZat } from "@byte-protocol/core";
+import { parseZat } from "@byte-protocol/core";
+import { newMemoSecret } from "@byte-protocol/core";
 import { MemoryInvoiceStore } from "@byte-protocol/stores";
 import { InvoiceIssuer, PaymentVerifier } from "@byte-protocol/server";
 import { WalletdWallet } from "@byte-protocol/wallet";
 import { createSellerRoutes } from "./seller-routes.js";
+import {
+  assertWalletMatches,
+  chooseNetwork,
+  mainnetBanner,
+} from "./network-guard.js";
 
 const PRICE_ZAT = process.env.BYTE_TESTNET_PRICE ?? "100000";
 const PORT = Number(process.env.BYTE_SELLER_PORT ?? "8402");
@@ -58,21 +68,15 @@ function requireEnv(name: string): string {
 }
 
 async function main(): Promise<void> {
-  if (process.env.BYTE_TESTNET !== "1") {
-    line("Refusing to run: set BYTE_TESTNET=1.");
-    line("This mints real invoices against Zcash testnet.");
-    process.exitCode = 1;
-    return;
-  }
+  const choice = chooseNetwork();
+  for (const warning of mainnetBanner(choice)) line(warning);
 
   const wallet = await WalletdWallet.connect({
     url: process.env.BYTE_WALLETD_URL ?? "http://127.0.0.1:8137",
     token: requireEnv("BYTE_WALLETD_TOKEN"),
   });
   const status = await wallet.status();
-  if (wallet.network !== NETWORK_TESTNET) {
-    throw new Error(`refusing to run against ${wallet.network}; this script is testnet-only`);
-  }
+  assertWalletMatches(choice, wallet.network);
   if (!status.synced) throw new Error("the wallet is not synced; wait and try again");
 
   const store = new MemoryInvoiceStore();
@@ -158,7 +162,7 @@ async function main(): Promise<void> {
   await new Promise<void>((resolve) => server.listen(PORT, "127.0.0.1", resolve));
 
   const balance = await wallet.balance();
-  line("A real Byte seller is running.");
+  line(`A real Byte seller is running on ${choice.name}.`);
   line();
   line(`  open          http://127.0.0.1:${PORT}/`);
   line(`  network       ${wallet.network}`);
@@ -166,12 +170,14 @@ async function main(): Promise<void> {
   line(`  seller wallet ${balance.spendableZat} zat spendable`);
   line(`  price         ${PRICE_ZAT} zat (${Number(parseZat(PRICE_ZAT)) / 1e8} ZEC)`);
   line();
-  line("In the page: connect Noir, open the Wallet page, and use the seller box at the");
-  line("top. It fetches a real invoice from this process, you pay it in Noir, and this");
-  line("process verifies it and reads the payment back off the chain with its viewing key.");
+  line("In the page: open the Wallet page and use the seller box at the top. It fetches a");
+  line("real invoice from this process. Pay it from any wallet, by the page's own button if");
+  line("the wallet has a web API, or by copying the ZIP-321 request if it has not, then");
+  line("paste the transaction ID back in. This process verifies it either way and reads the");
+  line("payment back off the chain with its viewing key.");
   line();
-  line("The seller and the payer are two different wallets only if Noir holds different");
-  line("funds from this sidecar. If they are the same wallet, say so in the log.");
+  line("The seller and the payer are two different wallets only if the paying wallet holds");
+  line("different funds from this sidecar. If they are the same wallet, say so in the log.");
   line();
   line("Ctrl-C to stop.");
 

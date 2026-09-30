@@ -1,12 +1,12 @@
 {
-  "measuredAt": "2026-09-30T11:30:05.348Z",
+  "measuredAt": "2026-09-30T16:04:37.453Z",
   "typescript": {
-    "files": 37,
-    "tests": 753,
+    "files": 38,
+    "tests": 778,
     "skipped": 5
   },
   "rust": {
     "tests": 66
   },
-  "total": 819
+  "total": 844
 }
