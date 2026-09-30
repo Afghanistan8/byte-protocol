@@ -206,3 +206,81 @@ The protocol itself behaved correctly throughout: the payer paid once, the selle
 Both roles ran against one wallet — the seller minted invoice addresses from the same sidecar
 the buyer spent from. This does **not** prove two separate wallets can transact. It proves the
 adapter, the issuer, the verifier and the sidecar agree with each other and with the chain.
+
+---
+
+## 2026-09-30 — paid from a browser, through a third-party wallet
+
+The first two runs both went through `byte-walletd`, the sidecar I wrote. This one does not.
+A person opened <https://byte-lime.vercel.app/app/>, connected the **Noir** browser
+extension, built a Byte invoice in the page and paid it. No sidecar, no terminal, no key
+held by anything of mine.
+
+That is the part worth recording: a wallet I did not write, driven by a person who is not
+me, settled a Byte-format invoice from a web page.
+
+| | |
+|---|---|
+| Wallet | Noir extension, testnet build |
+| Amount | 0.001 ZEC (100,000 zatoshis) |
+| Recipient | a `utest1…` shielded address, ending `vcj0qg` |
+| Broadcast | 2026-09-30, 11:57 local |
+| txid | `711d4d7ce97c757a3a036cfc7d1d0597a59ef02361d0c1f6fbf381cc9fd8f1bf` |
+
+An earlier payment the same day, to the wallet's own address, is
+`0dad3c53f7da679193379c45b6075cb5f34a034d866bde903950e6bd342e29bc`.
+
+The page built a ZIP 321 URI carrying a `BYTE1|…` memo, handed it to Noir through
+`zcash_sendTransaction` with `fundingSource` pinned to `shielded`, and Noir signed and
+broadcast it. Nothing in the browser ever saw a spending key.
+
+### What this run does not prove
+
+Being specific, because it would be easy to read more into this than it carries.
+
+- **No seller verified the payment.** The page builds a *practice* invoice with a fixed demo
+  key, so the memo is well-formed but no Byte server issued it and nothing marked it paid.
+  This proves the wallet leg, not the settlement leg. Runs 1 and 2 prove the settlement leg.
+- **The memo was not read back off the chain.** Runs 1 and 2 did that with a viewing key.
+  Here the browser holds no viewing key, so the evidence stops at a broadcast txid.
+- **The recipient address is recorded only as the wallet displayed it**, truncated. I did not
+  keep the full address, so this entry cannot assert who was paid.
+
+### Four defects this run caught
+
+None of these could have been found by the test suite. Every one of them needed a person,
+a browser and a wallet that behaves like a real wallet.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| The pay box was invisible until a balance loaded, and inputs were unreadable | dark-theme styles left on a light page, and a panel ordered below a long table | pay box first, light inputs, revealed as soon as the wallet connects |
+| "Reading your balance" forever | a second `zecToZat` later in the file silently replaced the first, so the balance reader called a strict converter that throws on 0, and the error was swallowed | renamed to `practiceZecToZat`; the balance path now never swallows an error |
+| Spendable shown as `0` beside a wallet plainly holding 1 ZEC | the reader looked only at the top level of the reply; this wallet nests its figures | walks the whole reply, skips other assets, matches names by normalized form. 24 tests, extracted from the page itself |
+| Four different raw wallet errors shown verbatim | no translation layer | wrong network, expired transaction, unfinished scan and insufficient funds each explained, with what to do |
+
+The third one is the one I would flag to anyone building something similar. Reporting `0`
+when the honest answer is *I could not read it* is worse than reporting nothing: it is a
+confident false statement about someone's money. The page now prints the wallet's raw reply
+and says it could not read it.
+
+### A wallet bug, not a Byte bug
+
+Several attempts failed with:
+
+```
+WALLET_SPENDABILITY_INCONSISTENT: account 1 has 1 confirmed note(s)
+with incomplete spendability metadata totaling 9865000 zatoshis
+```
+
+Noir's own v1.0.37 release notes (23 September 2026) read: *"Fixed transient spendability
+metadata errors triggering unnecessary full wallet rescans during active sync."* So this is a
+known wallet defect with a shipped fix, and no amount of rescanning helps on an older build.
+
+The dashboard now reads `window.noirwallet.version` and warns **before** a send when it is
+older than 1.0.37, rather than letting the payment fail for an unexplained reason.
+
+Checking that release history also corrected a claim of mine. The wallet table said Noir
+added Ironwood support in "v0.1.26, 27 Jul 2026". The repository publishes no `v0.1.x`
+release at all — its tags start at `v1.0.3`. Ironwood is named in **v1.0.26 (23 Jul 2026)**
+and **v1.0.27 (28 Jul 2026)**. Corrected in `docs/TOOLCHAIN.md`, which also records what the
+old row claimed and that it was wrong.
