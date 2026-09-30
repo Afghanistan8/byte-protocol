@@ -312,6 +312,19 @@
             pay. Nothing below is needed for that.
             <button class="btn small" id="sell-get" style="margin-top:11px">Get a real invoice</button>
             <div id="sell-result" style="margin-top:12px"></div>
+
+            <div class="hide" id="sell-elsewhere" style="margin-top:14px">
+              <label class="lab" for="sell-txid">Paid from another wallet? Paste the transaction ID</label>
+              <input type="text" id="sell-txid" placeholder="64 hex characters" spellcheck="false">
+              <button class="btn small" id="sell-check" style="margin-top:8px">Ask the seller to verify</button>
+              <div class="note" style="margin-top:10px">
+                Only a wallet with a web API can hand this page a transaction ID by itself.
+                Every other wallet pays the ZIP-321 request below and shows you the ID
+                afterwards. Paste it here and the seller checks the chain exactly the same
+                way: the invoice does not care which wallet paid it.
+              </div>
+              <div id="sell-elsewhere-result" style="margin-top:10px"></div>
+            </div>
           </div>
 
           <div class="note" style="margin-bottom:16px">
@@ -1173,6 +1186,7 @@
         if (typeof invoice.zip321 !== "string") throw new Error("the seller sent no ZIP-321 request");
         sellerInvoice = invoice;
         el("noir-uri").value = invoice.zip321;
+        el("sell-elsewhere").classList.remove("hide");
         out.innerHTML =
           '<div class="note good"><strong>Real invoice.</strong> Press ' +
           "<strong>Review in Noir</strong> below. When it is paid, the seller will verify it " +
@@ -1188,6 +1202,36 @@
           '<div class="note bad">Could not get an invoice: ' +
           escapeHtml(error && error.message ? error.message : "unknown error") + "</div>";
       });
+  });
+
+  /**
+   * Verify a payment made in a wallet this page cannot talk to.
+   *
+   * Noir is the only wallet with a Zcash web API, and it is on a pre-release line. Every
+   * other wallet pays a ZIP-321 request and shows the transaction ID on screen. Nothing
+   * about the protocol needs more than that: the memo binds the payment to the invoice, and
+   * the seller reads the chain itself. So a pasted ID is not a lesser path, it is the path
+   * that works for wallets with no Byte support whatsoever, which is most of them.
+   */
+  el("sell-check").addEventListener("click", function () {
+    var out = el("sell-elsewhere-result");
+    var txid = el("sell-txid").value.trim().toLowerCase();
+
+    if (sellerInvoice === null) {
+      out.innerHTML = '<div class="note bad">Get an invoice first, so there is something to verify against.</div>';
+      return;
+    }
+    // Checked here rather than sent on: a mistyped ID would come back as "not found",
+    // which reads like the payment failed.
+    if (!/^[0-9a-f]{64}$/.test(txid)) {
+      out.innerHTML =
+        '<div class="note bad">That does not look like a transaction ID. It is 64 characters, ' +
+        "digits and the letters a to f. Copy it from your wallet\u2019s transaction detail.</div>";
+      return;
+    }
+
+    out.innerHTML = '<div class="note"><span class="spin">&#9676;</span> Asking the seller&hellip;</div>';
+    askSellerToVerify(txid, out);
   });
 
   /**
