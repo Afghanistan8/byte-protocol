@@ -149,9 +149,12 @@
 
   input[type="text"], input[type="password"], input[type="url"] {
     width: 100%; padding: 10px 13px; border-radius: 0;
-    background: rgba(10,4,3,0.7); color: var(--ink);
+    /* Light field, dark text. These were a near-black background with dark text left over
+       from an earlier dark theme, which made every input on the site unreadable. */
+    background: #fffdf8; color: var(--ink);
     font-family: var(--mono); font-size: 13px; border: 2px solid var(--ink); outline: none;
   }
+  input::placeholder { color: var(--ink-faint); opacity: 1; }
   input:focus { border-color: var(--ember); }
   label.lab {
     display: block; margin: 13px 0 5px; font-family: var(--mono); font-size: 10px;
@@ -189,10 +192,13 @@
 
   .note {
     padding: 13px 15px; border-radius: 0; font-size: 13px;
-    border: 2px solid var(--ink); background: rgba(10,4,3,0.55); color: var(--ink-dim);
+    border: 2px solid var(--ink); background: #f7f2e8; color: var(--ink);
   }
-  .note.bad { border-color: rgba(255,107,107,0.4); color: #ffc4c4; }
-  .note.good { border-color: rgba(127,227,168,0.35); color: #c8f2da; }
+  /* Dark text on a light tint. The old values were pale text for a dark background, so a
+     "Not sent" error or a "Sent" confirmation was close to invisible. */
+  .note.bad { border-color: #a32b2b; background: #fbe9e7; color: #7a1c1c; }
+  .note.good { border-color: #2e7d4f; background: #e6f3ea; color: #1d5b37; }
+  .note strong { color: inherit; }
 
   .hide { display: none !important; }
   .spin { display: inline-block; animation: sp 0.9s linear infinite; }
