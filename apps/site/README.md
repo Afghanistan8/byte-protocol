@@ -40,8 +40,13 @@ zcash_sendTransaction · zcash_signMessage · zcash_shieldFunds
 `zcash_sendTransaction` takes `{ to, amount, memo, fundingSource }`, which is exactly the
 shape of a Byte payment — so the dashboard can settle a real invoice from a pasted ZIP-321
 URI. `fundingSource` is pinned to `shielded`: funding from transparent would publish the
-amount, so it refuses rather than falling back, the same way the protocol does. Noir added
-Ironwood support in v0.1.26.
+amount, so it refuses rather than falling back, the same way the protocol does. Noir's v1.0.26 release notes name Ironwood
+balance data, and v1.0.27 shipped on activation day with Ironwood privacy guidance.
+
+Noir versions **before v1.0.37** refuse to spend a note they have just received, with
+`WALLET_SPENDABILITY_INCONSISTENT`. That is their bug, fixed in v1.0.37 on 23 September 2026,
+and the dashboard says so on connect rather than letting a send fail for an unexplained
+reason.
 
 **MetaMask**, through ChainSafe's `@chainsafe/webzjs-zcash-snap`. The dashboard asks for
 `getViewingKey`, which is precisely Byte's model — able to read payments and verify invoices,

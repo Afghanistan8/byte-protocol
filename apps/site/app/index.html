@@ -198,6 +198,7 @@
      "Not sent" error or a "Sent" confirmation was close to invisible. */
   .note.bad { border-color: #a32b2b; background: #fbe9e7; color: #7a1c1c; }
   .note.good { border-color: #2e7d4f; background: #e6f3ea; color: #1d5b37; }
+  .note.warn { border-color: #a9701f; background: #fbf1e0; color: #7a4e11; }
   .note strong { color: inherit; }
 
   .hide { display: none !important; }
@@ -521,7 +522,7 @@
    */
   var WALLETS = [
     { name: "Noir", form: "Extension", ironwood: "yes",
-      since: "v0.1.26, 27 Jul 2026",
+      since: "v1.0.26, 23 Jul 2026",
       connect: "yes", how: "Injects window.noirwallet with a full Zcash API: accounts, balances, and sendTransaction carrying a memo." },
     { name: "Zodl", form: "Mobile", ironwood: "yes",
       since: "v3.8.0; Move to Ironwood in v3.9.0, 8 Aug 2026",
@@ -641,8 +642,8 @@
 
   /* ------------------------------------------------------------------ Noir
    * Noir injects a provider at window.noirwallet. Method names and parameter shapes come
-   * from NoirWallet/noir-wallet-sdk, not from guesswork. It added Ironwood support in
-   * v0.1.26, which is what makes it usable for Byte at all.
+   * from NoirWallet/noir-wallet-sdk, not from guesswork. Its v1.0.26 notes name Ironwood
+   * balance data, which is what makes it usable for Byte at all.
    */
 
   /**
@@ -660,6 +661,44 @@
 
   function noirVersion() {
     return (window.noirwallet && window.noirwallet.version) || null;
+  }
+
+  /**
+   * Noir 1.0.37 (23 Sep 2026) fixed "transient spendability metadata errors triggering
+   * unnecessary full wallet rescans during active sync". Before it, a wallet that has just
+   * received a note refuses to spend it with WALLET_SPENDABILITY_INCONSISTENT, which reads
+   * like the coins are broken. Worth saying on connect rather than after a failed send.
+   */
+  var NOIR_SPENDABILITY_FIX = "1.0.37";
+
+  /**
+   * Compare dotted versions numerically. Returns true when `version` is at least `minimum`.
+   * Unknown, unparseable or prerelease-only versions return null: the answer is "cannot
+   * tell", and a warning shown on a guess is worse than no warning.
+   */
+  function noirVersionAtLeast(version, minimum) {
+    if (typeof version !== "string") return null;
+    var head = /^v?(\d+(?:\.\d+)*)/.exec(version.trim());
+    if (head === null) return null;
+    var mine = head[1].split(".").map(Number);
+    var want = minimum.split(".").map(Number);
+    for (var i = 0; i < Math.max(mine.length, want.length); i += 1) {
+      var a = mine[i] === undefined ? 0 : mine[i];
+      var b = want[i] === undefined ? 0 : want[i];
+      if (a !== b) return a > b;
+    }
+    return true;
+  }
+
+  /** The warning to show for an out-of-date Noir, or "" when it is current or unknown. */
+  function noirVersionWarning() {
+    var ok = noirVersionAtLeast(noirVersion(), NOIR_SPENDABILITY_FIX);
+    if (ok !== false) return "";
+    return (
+      " <strong>Your Noir is out of date.</strong> Version " + escapeHtml(noirVersion()) +
+      " has a known bug that refuses to spend a coin it has just received. Update the " +
+      "extension to <strong>" + NOIR_SPENDABILITY_FIX + "</strong> or newer."
+    );
   }
 
   function noirRequest(method, params) {
@@ -790,7 +829,8 @@
             " <strong>Your coins are transparent.</strong> Byte can only spend shielded coins, so " +
             "open Noir and press <strong>Shield Funds</strong> first, then wait for it to confirm.";
         }
-        note("Connected to Noir. Balance read." + hint, "good");
+        note("Connected to Noir. Balance read." + hint + noirVersionWarning(),
+             noirVersionWarning() === "" ? "good" : "warn");
         // Kept for anyone debugging a mismatch: exactly what Noir said, not what we made of it.
         console.info("Noir zcash_getBalance:", b);
       })
@@ -856,27 +896,38 @@
    * precisely and helps nobody. The original message is kept underneath.
    */
   function explainSendError(message) {
-    // Noir has the note and knows it is confirmed, but has not finished building the
-    // witness data it needs to prove the note is unspent. Nothing here can repair that: it
-    // is the wallet's own scan state, and only the wallet can finish or redo the scan.
+    // Noir 1.0.37 (23 Sep 2026) release notes: "Fixed transient spendability metadata
+    // errors triggering unnecessary full wallet rescans during active sync." So this is a
+    // known wallet bug with a shipped fix, not a Byte problem and not a damaged note, and
+    // the honest thing is to name the version rather than send people round a rescan loop.
+    //
+    // Underneath it is also a waiting period. Noir 1.0.27 applied ZIP 315: a wallet's own
+    // change finalizes after 3 confirmations, coins received from someone else after 10.
     var stale = /WALLET_SPENDABILITY_INCONSISTENT[\s\S]*?totaling\s+(\d+)\s*zatoshis/.exec(message);
     if (stale !== null) {
+      var current = noirVersionAtLeast(noirVersion(), NOIR_SPENDABILITY_FIX);
       return (
-        "<strong>Not sent: your wallet has not finished reading your coins.</strong><br>" +
-        "Nothing was sent and no money moved.<br><br>" +
-        "Noir can see " + (Number(stale[1]) / 1e8) + " ZEC arrive and confirm, but it has not " +
-        "finished working out the extra data it needs before it can spend that coin. Until " +
-        "it does, it will not let the payment go out. This is Noir catching up with itself, " +
-        "not a problem with your coins or the address.<br><br>" +
+        "<strong>Not sent: your wallet will not spend that coin yet.</strong><br>" +
+        "Nothing was sent and no money moved. Your " + (Number(stale[1]) / 1e8) +
+        " ZEC is safe: it is on the chain, and this is about your wallet, not your coins." +
+        "<br><br>" +
+        (current === false
+          ? "<strong>This is a known bug in your version of Noir (" +
+            escapeHtml(noirVersion()) + ").</strong> "
+          : "<strong>This is a known Noir bug.</strong> ") +
+        "Noir fixed it in <strong>version " + NOIR_SPENDABILITY_FIX + "</strong>, released " +
+        "23 September 2026: <em>“Fixed transient spendability metadata errors " +
+        "triggering unnecessary full wallet rescans during active sync.”</em><br><br>" +
         "<strong>What to do:</strong><br>" +
-        "1. Open Noir and leave it open, on screen, until it stops showing that it is " +
-        "syncing or scanning.<br>" +
-        "2. Try the payment again.<br>" +
-        "3. Still the same? In Noir's settings, look for <strong>Rescan</strong> or " +
-        "<strong>Resync</strong> and run it. That makes the wallet read your coins again " +
-        "from the chain. It takes a while and it moves no money.<br><br>" +
-        "Your coins are safe either way. They are on the chain; this is only about what the " +
-        "wallet has worked out about them so far." +
+        "1. <strong>Update Noir.</strong> Open the extension, check its version, and " +
+        "install " + NOIR_SPENDABILITY_FIX + " or newer from the Noir releases page. This " +
+        "is the actual fix.<br>" +
+        "2. <strong>Then wait for confirmations.</strong> Noir follows ZIP 315: change from " +
+        "a payment you sent yourself becomes spendable after <strong>3 blocks</strong>, and " +
+        "coins someone else sent you after <strong>10 blocks</strong>. On testnet that is " +
+        "roughly a few minutes.<br>" +
+        "3. Try the payment again.<br><br>" +
+        "A rescan will not help and takes a long time. The version is what matters." +
         '<br><br><span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
       );
     }

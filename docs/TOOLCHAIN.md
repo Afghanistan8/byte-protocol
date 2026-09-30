@@ -231,7 +231,7 @@ checked, and Byte will not let a reader send money on its optimism.
 
 | Wallet | Status | Evidence |
 |--------|--------|----------|
-| Noir | Verified | v0.1.26, 27 Jul 2026 |
+| Noir | Verified | v1.0.26, 23 Jul 2026: "retaining support for Ironwood balance data after activation"; v1.0.27, 28 Jul 2026 expanded Ironwood privacy guidance. The repository publishes no v0.1.x release; an earlier version of this table said v0.1.26, 27 Jul 2026, and that was wrong. **Use v1.0.37 or newer**: before it, Noir refuses to spend a freshly received note with `WALLET_SPENDABILITY_INCONSISTENT`, fixed on 23 Sep 2026 |
 | Zodl | Verified | v3.8.0 Ironwood-compatible; "Move to Ironwood" shipped in v3.9.0 on 8 Aug 2026; latest v3.9.5, 18 Aug |
 | Zingo | Verified | v2.0.22 (313), 31 Jul 2026 |
 | Zkool | Verified | v6.25.0, 27 Jul 2026; v6.27.0, 15 Aug |
