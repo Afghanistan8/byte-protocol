@@ -2,8 +2,9 @@
  * In-memory stores.
  *
  * For tests, development, and single-process deployments that can tolerate losing
- * outstanding invoices on restart. Anything else needs a durable store, which Byte does
- * not yet ship — see the warning on `MemoryInvoiceStore` and docs/ROADMAP.md.
+ * outstanding invoices on restart. Anything else wants `createSqliteStores` from
+ * `./sqlite.js`, which keeps consumed-invoice records on disk and therefore keeps refusing
+ * replays after a restart. See the warning on `MemoryInvoiceStore`.
  */
 
 import {

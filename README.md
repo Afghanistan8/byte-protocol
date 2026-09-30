@@ -31,7 +31,7 @@ Read back through the API, both outputs — the payment and the change — repor
 `"pool": "ironwood"`, and the memo that came off the chain is byte-identical to the one
 issued.
 
-**<!--stats:total-->666<!--/stats--> tests pass**: <!--stats:ts-->606<!--/stats--> TypeScript, <!--stats:rust-->60<!--/stats--> Rust.
+**<!--stats:total-->706<!--/stats--> tests pass**: <!--stats:ts-->646<!--/stats--> TypeScript, <!--stats:rust-->60<!--/stats--> Rust.
 
 ---
 
@@ -122,7 +122,7 @@ Implemented and tested:
 |---------|--------------|
 | `@byte-protocol/core` | Scheme types, memo codec, ZIP-321, receipts, amounts, pools, store interfaces |
 | `@byte-protocol/wallet` | The wallet contract, a `byte-walletd` backend for the real chain, and a deterministic mock that models the failure modes. Includes `shield`, `unshield` and the auto-shielder for transparent receipts |
-| `@byte-protocol/stores` | In-memory invoice and receipt stores. **Not durable:** a restart re-opens the replay window |
+| `@byte-protocol/stores` | Invoice and receipt stores: in-memory for tests, and **SQLite for anything durable**. Both run one contract suite; only SQLite survives a restart |
 | `@byte-protocol/pricing` | ZEC/USD price sources (NEAR Intents, Kraken) behind staleness and cross-source guards, for invoices priced in USD |
 | `@byte-protocol/server` | Invoice issuance, USD-priced invoices, the optional facilitator fee, and payment verification |
 | `@byte-protocol/client` | `createByteFetch`, the payer (which pays every output an invoice names), and the spend guard |
@@ -137,8 +137,8 @@ Implemented and tested:
 | `@byte-protocol/console` | The owner-only JSON API and the Byte console |
 | `crates/byte-walletd` | The Rust sidecar on librustzcash: addresses, sync, send, verify |
 
-**Planned, and not claimed to work:** a durable store, the cash-out direction of the NEAR
-rail, and every other funding rail, each named
+**Planned, and not claimed to work:** a Redis store for several processes sharing one
+payee, and every other funding rail, each named
 with its reason in [RAILS.md](docs/RAILS.md). Nothing above is listed as supported without
 code and a passing test behind it.
 

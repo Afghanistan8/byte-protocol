@@ -149,10 +149,27 @@ the linkage Byte exists to avoid.
 The memory invoice store loses consumed-invoice records on restart, which re-opens the
 replay window for any invoice still within its expiry.
 
-Byte does **not** currently ship a durable store, so this is a live limitation rather than
-a configuration mistake: run a single process, keep invoice TTLs short, and treat a restart
-as re-opening the replay window for every invoice still inside its expiry. A durable store
-is Planned — see docs/ROADMAP.md.
+**Use the SQLite store in anything that matters.** `createSqliteStores(path)` keeps consumed
+records on disk, so a restart no longer forgets which invoices have been paid:
+
+```ts
+import { createSqliteStores } from "@byte-protocol/stores";
+const { invoices, receipts } = createSqliteStores("./byte.db");
+```
+
+`consume` there is a single conditional `UPDATE ... WHERE consumed_at IS NULL`, so the test
+and the write cannot be separated: the row count is the answer. Both stores run the same
+contract suite, including twenty concurrent claims on one invoice producing exactly one
+winner.
+
+The database is opened with `synchronous = FULL`. `NORMAL` can lose the most recent commits
+on power loss, and the most recent commit is exactly the consumed-invoice record that stops
+a replay.
+
+Two limits worth stating. `:memory:` is as durable as the memory store, which is to say not
+at all, and is a test-only setting. And this suits **one payee process with one file**;
+several processes sharing a payee want Redis behind the same interface, which is not
+built.
 
 ### 5.4 Byte's verification is not a consensus judgement
 

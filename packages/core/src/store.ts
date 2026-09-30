@@ -1,12 +1,12 @@
 /**
  * Storage interfaces.
  *
- * Byte ships one implementation: an in-memory store, for tests, development and
- * single-process deployments that can tolerate losing outstanding invoices on restart.
+ * Byte ships two implementations: an in-memory pair for tests and development, and a
+ * durable SQLite pair for anything that must survive a restart. Both are held to one
+ * contract suite, so switching between them changes durability and nothing else.
  *
- * A durable store — Redis, Postgres, anything — is a matter of satisfying these
- * interfaces, and the one thing an implementation must not get wrong is `consume`. See
- * the note on it below, and docs/ROADMAP.md for why the durable store is still Planned.
+ * Any further implementation is a matter of satisfying these interfaces, and the one thing
+ * it must not get wrong is `consume`. See the note on it below.
  *
  * See docs/SPEC.md §7.
  */

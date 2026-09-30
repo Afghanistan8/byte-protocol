@@ -26,12 +26,19 @@ marked **Planned**, which here means *not implemented and not claimed*.
 
 ## Next
 
-### A Redis store
+### A Redis store, for several processes sharing one payee
 
-The memory store loses consumed-invoice records on restart, which re-opens the replay window
-for anything still inside its expiry. That is stated on the class itself, but stating it is
-not fixing it. The interface already requires `consume` to be a single atomic test-and-set;
-Redis does it with `SET … NX`.
+**Done, differently: durability now ships on SQLite.** The memory store lost consumed-invoice
+records on restart, which re-opened the replay window for anything still inside its expiry.
+`createSqliteStores` keeps them on disk, and `consume` there is a single conditional
+`UPDATE ... WHERE consumed_at IS NULL`, so the test and the write cannot come apart.
+
+SQLite was chosen over Redis because it needs no dependency and no server: a payment library
+that requires infrastructure before it can refuse a replay will be deployed without it.
+
+What is still open is the case SQLite does not serve: **several processes sharing one payee**.
+That wants Redis, behind the same interface and the same contract suite, with `SET … NX`
+doing the work the conditional `UPDATE` does now.
 
 ### Submit the Zcash scheme to x402
 
