@@ -41,6 +41,45 @@ export interface RailQuoteRequest {
   dry?: boolean;
 }
 
+/**
+ * What a cash-out asks for: shielded ZEC in, something else out.
+ *
+ * The mirror of `RailQuoteRequest`, and it leaks the same way. Value leaves Ironwood to
+ * reach the rail's deposit address, so the amount crossing is public (ZIP 318). A rail
+ * cannot fix that, and this interface does not pretend it can.
+ */
+export interface RailCashOutRequest {
+  /** Rail-specific destination asset identifier. */
+  to: string;
+  /** Zatoshis of ZEC to send, canonical integer string. */
+  amountInZat: string;
+  /** Where the proceeds go: an address on the destination chain. */
+  recipient: string;
+  /** Ask for a quote without committing to anything. */
+  dry?: boolean;
+}
+
+/**
+ * Fees a rail charges, itemised and separate from Byte's.
+ *
+ * Byte's protocol fee is zero, and a rail's fees are the rail's. Folding them into one
+ * number would make a third party's charge look like Byte's, which is exactly the
+ * confusion this breakdown exists to prevent.
+ */
+export interface RailFees {
+  /** Fee entries the rail reported, each in the smallest unit of the asset named. */
+  items: Array<{ label: string; amount: string; asset?: string }>;
+  /**
+   * Fees the rail added that the caller did not ask for.
+   *
+   * 1Click, for instance, attaches its own `appFees` to a quote. Surfaced separately
+   * because a charge nobody requested is the one a caller most needs to see.
+   */
+  unrequested: Array<{ label: string; amount: string; asset?: string }>;
+  /** Free-text note, e.g. the surcharge for calling without a JWT. */
+  note?: string;
+}
+
 export interface RailQuote {
   railId: string;
   /**
@@ -66,6 +105,16 @@ export interface RailQuote {
   dry: boolean;
   /** What this rail publishes. Required: a rail must state whether it leaks. */
   transparentLeg: TransparentLeg;
+  /**
+   * Whether the rail proved this quote is its own.
+   *
+   * `true` only when a signature was checked and passed. `false` means unsigned or
+   * unverifiable, which a caller moving real value should treat as a reason to stop: the
+   * deposit address is the field an attacker would swap.
+   */
+  signatureVerified: boolean;
+  /** The rail's own fees, itemised and never mixed with Byte's. */
+  fees?: RailFees;
   /** Rail-specific extras, for debugging and display. */
   raw?: Record<string, unknown>;
 }
@@ -99,4 +148,14 @@ export interface Rail {
 
   quote(request: RailQuoteRequest): Promise<RailQuote>;
   status(depositAddress: string): Promise<RailStatus>;
+}
+
+/** A rail that can also send value out: shielded ZEC to some other asset. */
+export interface CashOutRail extends Rail {
+  cashOutQuote(request: RailCashOutRequest): Promise<RailQuote>;
+}
+
+/** True when a rail can send value out as well as bring it in. */
+export function canCashOut(rail: Rail): rail is CashOutRail {
+  return typeof (rail as CashOutRail).cashOutQuote === "function";
 }

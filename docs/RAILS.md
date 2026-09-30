@@ -37,7 +37,7 @@ Everything below is a compromise against that.
 
 ---
 
-## NEAR Intents — implemented, dry-run
+## NEAR Intents: implemented, both directions, dry-run
 
 `@byte-protocol/rail-near-intents`
 
@@ -72,15 +72,88 @@ a message naming the real reason.
 to moving real value through a public address; that should be a deliberate act, not the
 consequence of a default.
 
-**No live funding has been performed through this rail.** It is implemented and tested
-against mocked HTTP shaped from the [1Click OpenAPI
+**No live funding has been performed through this rail, and no value has moved through
+it.** It is implemented and tested against mocked HTTP shaped from the [1Click OpenAPI
 document](https://1click.chaindefuser.com/docs/v0/openapi.yaml), covering all seven documented
-statuses, the shape of the quote request body, and the failure paths.
+statuses, the shape of both quote request bodies, and the failure paths.
+
+There is also a **live test** against the real service, gated behind `BYTE_RAILS_LIVE=1` and
+dry-only, so it reserves no deposit address and commits to nothing:
+
+```bash
+BYTE_RAILS_LIVE=1 pnpm vitest run packages/rails/near-intents/src/live.test.ts
+```
+
+It passes: ZEC resolves, both a funding quote and a cash-out quote come back, and both
+signatures verify.
+
+### Both directions
+
+**Funding** brings some other asset in and delivers ZEC to a transparent address. Byte mints
+a **fresh** transparent address per funding when it has a wallet: one fixed address would
+hand an observer every funding this rail ever performed, tied together as one party's
+history. Once the swap reports `SUCCESS`, `settle()` shields the proceeds into Ironwood,
+which is what makes them spendable by Byte at all.
+
+**Cashing out** sends shielded ZEC to 1Click's deposit address and takes another asset out.
+It asks for `EXACT_INPUT`, not `EXACT_OUTPUT`: the wallet has to commit to a specific amount
+leaving the shielded pool, and an exact output would let that amount vary. Refunds go to a
+fresh transparent address of the same wallet, so a failed swap returns somewhere the
+auto-shielder is watching rather than somewhere nobody is.
+
+**Cashing out publishes the amount.** ZIP 318 makes the net amount crossing between pools
+public, and cashing out is that crossing, deliberately. There is no arrangement of it that
+does not leak. It is how value leaves Byte's guarantee.
+
+### Quote signatures are verified
+
+A quote hands back a deposit address and the caller sends real value to it, so the address is
+exactly the field worth forging. Every quote carries an Ed25519 signature from 1Click, and
+Byte checks it:
+
+- **What is signed:** a deterministic JSON object built from a fixed subset of the request
+  and the quote, plus the timestamp, serialized with sorted keys, SHA-256'd, then
+  **Base58-encoded**. The message verified is the UTF-8 bytes of that Base58 string, not the
+  raw digest.
+- **The key:** 1Click's manager key, `ed25519:reYaWhvwu8Jzo3WUM3zhn6VrhuMEF4eADL17qtRVifc`,
+  overridable in case it rotates.
+- **Validated against a real signature**, not one Byte produced: a captured live response is
+  checked into `fixtures/`, and the tests tamper with the amount, the recipient, the refund
+  address and the deposit address and confirm each is refused.
+
+`payCashOut` refuses to send to a quote whose signature did not verify.
+
+### Confidentiality: a correction the docs do not make
+
+The API's `confidentiality` enum is `public | basic | advanced`, and **its own default is
+`public`**, the most revealing setting. So Byte always sends a value rather than letting
+silence choose.
+
+But **every confidential setting requires 1Click authentication.** Sending `basic` without a
+JWT is refused outright:
+
+```
+401 "User authentication is required for confidential intent quotes"
+```
+
+That is not stated next to the enum. The live test found it. So Byte sends `basic` when a JWT
+is configured and `public` when one is not, and the quote's fee note says which. A rail that
+asked for confidentiality regardless would fail every quote; one that silently settled for
+`public` while the caller believed otherwise would be worse.
+
+None of it hides anything on Zcash. `confidentiality` affects the link between deposit and
+withdrawal **on the Intents side only**. The transparent Zcash leg is public whatever it
+says.
 
 ### Fees
 
 NEAR Intents charges an extra **0.25%** when no JWT is supplied. That fee is **theirs, not
 Byte's**, and it is passed through unchanged rather than folded into anything.
+
+Every quote carries an itemised `fees` breakdown: the rail's own charges (`withdraw`,
+`refund`) in one list, and in a **separate** list anything the service attached that Byte
+never asked for. 1Click adds its own `appFees` entry to quotes; a charge the caller did not
+request is the one they most need to see, so it is never merged into a total.
 
 Byte's own protocol fee is zero on every path. The one Byte-side fee that can exist is
 the optional facilitator fee — off by default, a second ZIP-321 output, enforced by the

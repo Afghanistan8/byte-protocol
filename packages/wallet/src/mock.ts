@@ -335,7 +335,9 @@ export class MockWallet implements ShieldingWallet {
   readonly #random: () => number;
   readonly #consensusBranchId: string;
   #addressCounter = 0;
+  #transparentCounter = 0;
   #minted: string[] = [];
+  #transparentMinted: string[] = [];
 
   constructor(options: MockWalletOptions) {
     this.network = options.network;
@@ -355,7 +357,18 @@ export class MockWallet implements ShieldingWallet {
    * value sitting here is public and unspendable by Byte until it is shielded.
    */
   get transparentAddress(): string {
-    return `t1${this.#prefix}-transparent`;
+    return mockTransparentAddress(`${this.#prefix}base`);
+  }
+
+  /** Every transparent address this wallet controls: its base one, then each one minted. */
+  get transparentAddresses(): readonly string[] {
+    return [this.transparentAddress, ...this.#transparentMinted];
+  }
+
+  async newTransparentAddress(): Promise<string> {
+    const address = mockTransparentAddress(`${this.#prefix}${this.#transparentCounter++}`);
+    this.#transparentMinted.push(address);
+    return address;
   }
 
   /** Every address this wallet has minted, in order. */
@@ -408,7 +421,7 @@ export class MockWallet implements ShieldingWallet {
     // Byte's, and is the thing auto-shielding exists to notice. Leaving it out made the
     // wallet report a balance of zero while holding a funded transparent UTXO — which is
     // exactly the state an operator most needs to be told about.
-    const addresses = [this.fundingAddress, this.transparentAddress, ...this.#minted];
+    const addresses = [this.fundingAddress, ...this.transparentAddresses, ...this.#minted];
     let spendable = 0n;
     let pending = 0n;
     let unusable = 0n;
@@ -501,7 +514,7 @@ export class MockWallet implements ShieldingWallet {
     const sources =
       request.fromTransparent !== undefined && request.fromTransparent.length > 0
         ? request.fromTransparent
-        : [this.transparentAddress];
+        : [...this.transparentAddresses];
 
     const available = sources.reduce(
       (sum: bigint, address: string) => sum + this.#chain.transparentAt(address),
@@ -632,6 +645,24 @@ export class MockWallet implements ShieldingWallet {
  */
 export function isTransparentAddressLike(address: string): boolean {
   return /^t[13]/.test(address);
+}
+
+/**
+ * A mock transparent address that is *shaped* like a real one.
+ *
+ * `t1` plus 33 base58 characters, which is what a real P2PKH address is and what the
+ * rails validate against. The readable part survives at the front, so a failure still says
+ * `t1utest1railbase…` rather than 35 characters of noise.
+ *
+ * Shaped correctly on purpose: the mock previously minted `t1utest1rail-transparent`, which
+ * no real validator would accept. Tests passed against the mock and the rail rejected every
+ * address the moment the two met, which is the kind of gap a mock is supposed to close
+ * rather than open.
+ */
+export function mockTransparentAddress(label: string): string {
+  // Base58 excludes 0, O, I and l, so strip anything outside the alphabet.
+  const cleaned = label.replace(/[^1-9A-HJ-NP-Za-km-z]/g, "");
+  return `t1${(cleaned + "x".repeat(33)).slice(0, 33)}`;
 }
 
 /**

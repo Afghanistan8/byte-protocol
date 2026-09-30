@@ -87,6 +87,21 @@ export interface SpendingWallet extends ViewOnlyWallet {
  */
 export interface ShieldingWallet extends SpendingWallet {
   /**
+   * Mint a fresh transparent address that this wallet will track.
+   *
+   * **A fresh one every call.** A rail that delivers ZEC to a transparent address publishes
+   * that delivery, and reusing one address across fundings hands an observer the whole
+   * funding history for free: every deposit to it is visibly the same party. A new address
+   * per quote does not make a delivery private, but it stops each one being labelled as
+   * belonging to the last.
+   *
+   * Implementations MUST register the address with the wallet, so that it looks for
+   * unspent outputs there. An address that was minted but never tracked would receive
+   * value the wallet could not see, and could not shield.
+   */
+  newTransparentAddress(): Promise<string>;
+
+  /**
    * Sweep transparent value into Ironwood.
    *
    * Implementations MUST compute the ZIP-317 fee from the built proposal rather than

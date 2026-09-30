@@ -189,6 +189,59 @@ impl ViewingKeys {
     /// searches forward. The caller must persist the returned index and resume from the
     /// next one, or two invoices will share an address — the exact linkage Byte exists to
     /// prevent.
+    /// Derive a transparent receiving address at a diversifier index.
+    ///
+    /// ## Why this goes via a unified address
+    ///
+    /// A unified address with no shielded receiver cannot be constructed:
+    /// `ReceiverRequirements::new` returns `NoShieldedReceiver` when both Orchard and
+    /// Sapling are omitted. So this asks for an address that *requires* a p2pkh receiver
+    /// and takes that receiver out of it, rather than trying to build a transparent-only UA.
+    ///
+    /// ## What it is for, and what it is not for
+    ///
+    /// Rails. NEAR Intents delivers ZEC to `t1`/`t3` only, so funding needs a transparent
+    /// address to receive at, and a **fresh one per funding** so that an observer cannot
+    /// read one address as the party's whole funding history.
+    ///
+    /// It is never an invoice address. A Byte payment is settled in Ironwood, and
+    /// `invoice_address_at` above deliberately carries no transparent receiver at all.
+    pub fn transparent_address_at(&self, index: u32) -> Result<(String, u32), KeyError> {
+        use zcash_keys::keys::{ReceiverRequirement, UnifiedAddressRequest};
+
+        let j = DiversifierIndex::try_from(u128::from(index))
+            .map_err(|_| KeyError::DiversifierExhausted)?;
+
+        // Orchard is Allow rather than Omit because Omit on both shielded receivers is
+        // rejected outright; only the transparent receiver is used from the result.
+        let request = UnifiedAddressRequest::unsafe_custom(
+            ReceiverRequirement::Allow,
+            ReceiverRequirement::Omit,
+            ReceiverRequirement::Require,
+        );
+
+        let (address, found) = self
+            .ufvk
+            .find_address(j, request)
+            .map_err(|e| KeyError::AddressGeneration(e.to_string()))?;
+
+        let transparent = address.transparent().ok_or_else(|| {
+            // Require was asked for, so this cannot happen without the library changing
+            // under us. Reported rather than unwrapped: an address silently missing its
+            // transparent receiver would send rail funds nowhere recoverable.
+            KeyError::AddressGeneration(
+                "a p2pkh receiver was required but the derived address has none".into(),
+            )
+        })?;
+
+        Ok((
+            transparent
+                .to_zcash_address(self.network.network_type())
+                .to_string(),
+            diversifier_index_to_u32(&found)?,
+        ))
+    }
+
     pub fn invoice_address_at(&self, index: u32) -> Result<(String, u32), KeyError> {
         let j = DiversifierIndex::try_from(u128::from(index))
             .map_err(|_| KeyError::DiversifierExhausted)?;
@@ -238,6 +291,13 @@ impl DiversifierCursor {
     /// Mint the next invoice address, advancing past whatever index was actually used.
     pub fn next_address(&mut self, keys: &ViewingKeys) -> Result<String, KeyError> {
         let (address, used) = keys.invoice_address_at(self.next)?;
+        self.next = used.checked_add(1).ok_or(KeyError::DiversifierExhausted)?;
+        Ok(address)
+    }
+
+    /// The next transparent address, advancing past any index the derivation skipped.
+    pub fn next_transparent_address(&mut self, keys: &ViewingKeys) -> Result<String, KeyError> {
+        let (address, used) = keys.transparent_address_at(self.next)?;
         self.next = used.checked_add(1).ok_or(KeyError::DiversifierExhausted)?;
         Ok(address)
     }

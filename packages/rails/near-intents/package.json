@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@byte-protocol/core": "workspace:*",
-    "@byte-protocol/rails": "workspace:*"
+    "@byte-protocol/rails": "workspace:*",
+    "@byte-protocol/wallet": "workspace:*"
   }
 }

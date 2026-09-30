@@ -246,6 +246,7 @@ pub fn router(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/status", get(status))
         .route("/addresses", post(new_address))
+        .route("/transparent-addresses", post(new_transparent_address))
         .route("/viewing-key", get(viewing_key))
         .route("/memo/encode", post(memo_encode))
         .route("/memo/verify", post(memo_verify))
@@ -282,6 +283,26 @@ async fn status(State(state): State<AppState>, headers: HeaderMap) -> ApiResult<
         synced: status.synced,
         nu6_3_activation_height: state.wallet.network().nu6_3_activation_height(),
         consensus_branch_id: status.consensus_branch_id,
+    }))
+}
+
+/// Mint a fresh transparent address for a rail to deliver to.
+///
+/// Never an invoice address: Byte settles in Ironwood, and `/addresses` deliberately mints
+/// addresses with no transparent receiver. This exists because NEAR Intents delivers ZEC to
+/// `t1`/`t3` only, so funding has to land somewhere public first.
+///
+/// A fresh one per funding, so an observer cannot read a single address as the whole
+/// funding history of one party.
+async fn new_transparent_address(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> ApiResult<AddressResponse> {
+    authorize(&headers, &state.api_token)?;
+    let (address, diversifier_index) = state.wallet.new_transparent_address()?;
+    Ok(Json(AddressResponse {
+        address,
+        diversifier_index,
     }))
 }
 

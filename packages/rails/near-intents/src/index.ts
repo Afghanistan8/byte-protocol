@@ -9,3 +9,4 @@
 
 export * from "@byte-protocol/rails";
 export * from "./rail.js";
+export * from "./quote-signature.js";

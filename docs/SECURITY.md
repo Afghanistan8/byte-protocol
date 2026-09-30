@@ -210,3 +210,25 @@ Open a security advisory on the repository rather than a public issue.
 
 This is hackathon-stage software built against alpha- and beta-era Ironwood tooling. It has
 not been audited. Do not put mainnet funds behind it.
+
+### 2.4 What `confidentiality` on the NEAR rail does and does not do
+
+The 1Click API takes a `confidentiality` setting. It is worth being precise about its scope,
+because the name invites a bigger reading than it deserves.
+
+It affects the link between the deposit and the withdrawal **on the Intents side**. It does
+nothing whatever on Zcash. The Zcash leg of this rail is a transparent transaction: its
+amount, its address and its timing are public regardless of what this field says, and
+shielding afterwards ends that exposure rather than undoing it.
+
+Two further facts, both found by running against the live service rather than reading:
+
+- **Every confidential setting requires a JWT.** `basic` without one is refused with
+  `401 "User authentication is required for confidential intent quotes"`. Byte therefore
+  sends `basic` only when a JWT is configured, `public` otherwise, and states in the quote's
+  fee note which one it sent.
+- **The API's own default is `public`.** Byte never leaves the field unset, because silence
+  selects the most revealing option.
+
+If your threat model cannot tolerate a public funding leg, no setting here fixes that. Fund
+the wallet with shielded ZEC and do not use a transparent rail.

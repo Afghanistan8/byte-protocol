@@ -143,6 +143,8 @@ pub struct WalletState {
     spending: Option<SpendingKeys>,
     viewing: ViewingKeys,
     cursor: Mutex<DiversifierCursor>,
+    /// Separate from `cursor`: see `new_transparent_address`.
+    transparent_cursor: Mutex<DiversifierCursor>,
     chain: Arc<dyn ChainData>,
     /// Present only when this process both holds a spending key and is connected to a
     /// chain. Sending requires both, and the type says so.
@@ -164,6 +166,7 @@ impl WalletState {
             spending: Some(spending),
             viewing,
             cursor: Mutex::new(DiversifierCursor::default()),
+            transparent_cursor: Mutex::new(DiversifierCursor::default()),
             chain,
             sender: None,
         })
@@ -183,6 +186,7 @@ impl WalletState {
             spending: None,
             viewing: ViewingKeys::decode(network, ufvk)?,
             cursor: Mutex::new(DiversifierCursor::default()),
+            transparent_cursor: Mutex::new(DiversifierCursor::default()),
             chain,
             sender: None,
         })
@@ -270,6 +274,22 @@ impl WalletState {
     /// Works from a viewing key alone: minting addresses never needs spend capability,
     /// which is what lets a facilitator issue invoices for a merchant without being able
     /// to take the proceeds.
+    /// Mint a fresh transparent address, for a rail to deliver to.
+    ///
+    /// A separate cursor from invoice addresses. Sharing one would make a transparent
+    /// address and an invoice address derive from the same diversifier index, and anyone
+    /// holding the account's viewing key could then tie a public funding address to a
+    /// shielded invoice address. Two cursors cost nothing and remove the question.
+    pub fn new_transparent_address(&self) -> Result<(String, u32), WalletStateError> {
+        let mut cursor = self
+            .transparent_cursor
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let index = cursor.position();
+        let address = cursor.next_transparent_address(&self.viewing)?;
+        Ok((address, index))
+    }
+
     pub fn new_invoice_address(&self) -> Result<(String, u32), WalletStateError> {
         let mut cursor = self
             .cursor

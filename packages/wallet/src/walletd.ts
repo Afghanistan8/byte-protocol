@@ -277,6 +277,22 @@ export class WalletdWallet implements ShieldingWallet {
   }
 
   /**
+   * Mint a fresh transparent address the sidecar will track.
+   *
+   * Used by funding rails, which deliver to `t1`/`t3` only. Never for an invoice: those are
+   * minted by `newInvoiceAddress` and carry no transparent receiver at all.
+   */
+  async newTransparentAddress(): Promise<string> {
+    const response = (await this.#request("POST", "/transparent-addresses")) as {
+      address?: unknown;
+    };
+    if (typeof response.address !== "string") {
+      throw new ByteProtocolError("byte-walletd returned no transparent address");
+    }
+    return response.address;
+  }
+
+  /**
    * Sweep transparent value into Ironwood.
    *
    * The delay policy is enforced **here**, in the client, not in the sidecar. The sidecar

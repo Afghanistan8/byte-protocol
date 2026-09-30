@@ -8,8 +8,38 @@
 
 import { bytesToHex, hexToBytes, utf8ToBytes, randomBytes } from "@noble/hashes/utils.js";
 import { sha256 } from "@noble/hashes/sha2.js";
+import { ed25519 } from "@noble/curves/ed25519.js";
 
 export { bytesToHex, hexToBytes, utf8ToBytes, randomBytes, sha256 };
+
+/**
+ * Verify an Ed25519 signature. Returns false on any failure and never throws.
+ *
+ * Exposed so packages that verify a *third party's* signature (the NEAR Intents rail checks
+ * 1Click's quotes) can do it without each taking their own dependency on a curve library.
+ * A signature arriving from outside is malformed as often as it is wrong, so a malformed
+ * key, a short signature and a bad signature all read the same way: not verified.
+ */
+export function verifyEd25519(
+  signature: Uint8Array,
+  message: Uint8Array,
+  publicKey: Uint8Array,
+): boolean {
+  try {
+    return ed25519.verify(signature, message, publicKey);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sign with Ed25519. The counterpart of {@link verifyEd25519}, exposed for the same reason:
+ * so a package that has to *produce* a signature, or a test standing in for a third party
+ * that does, needs no curve library of its own.
+ */
+export function signEd25519(message: Uint8Array, secretKey: Uint8Array): Uint8Array {
+  return ed25519.sign(message, secretKey);
+}
 
 /** SHA-256 of a UTF-8 string, as lowercase hex. */
 export function sha256Hex(text: string): string {
