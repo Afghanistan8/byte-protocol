@@ -227,6 +227,29 @@ describe("a payment that does not settle the invoice", () => {
   });
 });
 
+describe("identifying itself", () => {
+  // The dashboard decides whether to offer a seller from this answer. It used to infer a
+  // seller from "OPTIONS /invoice did not 404", so any static file server that answered
+  // 200 to everything made the page offer one that was not there.
+  it("answers GET /seller with a marker, the network and the price", async () => {
+    const h = harness();
+    const response = await h.routes.handle("GET", "/seller", "");
+    expect(response?.status).toBe(200);
+    const body = response?.body as Record<string, unknown>;
+    expect(body.byteSeller).toBe(true);
+    expect(body.network).toBe(NETWORK_TESTNET);
+    expect(body.priceZat).toBe(PRICE);
+  });
+
+  it("has no side effect, so the page may ask as often as it likes", async () => {
+    const h = harness();
+    await h.routes.handle("GET", "/seller", "");
+    await h.routes.handle("GET", "/seller", "");
+    expect(h.routes.issued.size).toBe(0);
+    expect(h.events).toEqual([]);
+  });
+});
+
 describe("the HTTP surface itself", () => {
   it("answers nothing for a route it does not have, so the caller owns the 404", async () => {
     const h = harness();

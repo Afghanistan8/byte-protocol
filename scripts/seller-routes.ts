@@ -54,6 +54,18 @@ export function createSellerRoutes(options: SellerRoutesOptions): SellerRoutes {
     issued,
 
     async handle(method, path, body): Promise<SellerResponse | null> {
+      // A marker the page can ask for, so "is a seller here?" is a positive answer rather
+      // than the absence of a 404. The dashboard used to probe OPTIONS /invoice and treat
+      // any 2xx as a seller, which means any static file server that answers 200 to
+      // everything made the page offer a seller that was not there. Nothing here has a
+      // side effect, so the page may ask as often as it likes.
+      if (method === "GET" && path === "/seller") {
+        return {
+          status: 200,
+          body: { byteSeller: true, network: options.wallet.network, priceZat: options.priceZat },
+        };
+      }
+
       if (method === "POST" && path === "/invoice") {
         const invoice = await options.issuer.issue(options.priceZat);
         issued.set(invoice.invoiceId, { payTo: invoice.payTo, amountZat: invoice.amount });

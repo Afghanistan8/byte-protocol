@@ -1080,7 +1080,7 @@
 
         // If this invoice came from a real seller, ask it to verify. That is the only way
         // this page can show a payment was *settled* rather than merely broadcast.
-        if (sellerInvoice !== null) askSellerToVerify(String(txid), el("settle-result"));
+        if (sellerInvoice !== null) askSellerToVerify(String(txid), el("settle-result"), true);
       })
       .catch(function (error) {
         var message = error && error.message ? error.message : "unknown error";
@@ -1235,11 +1235,14 @@
   function detectSeller() {
     var origin = sellerOrigin();
     if (origin === null) return;
-    // Asking rather than assuming: this page can be served by any local static server, and
-    // one that answers 404 here is not a seller.
-    fetch(origin + "/invoice", { method: "OPTIONS" })
-      .then(function (r) {
-        if (r.ok || r.status === 204) el("seller-box").classList.remove("hide");
+    // A positive identification, not the absence of a 404. This used to probe
+    // OPTIONS /invoice and accept any 2xx, so a static file server that answers 200 to
+    // everything made the page offer a seller that was not there, and the button then
+    // failed for a reason nobody could see. Now the seller has to say what it is.
+    fetch(origin + "/seller", { method: "GET" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (info) {
+        if (info && info.byteSeller === true) el("seller-box").classList.remove("hide");
       })
       .catch(function () { /* not a seller; the practice box is still there */ });
   }
@@ -1301,7 +1304,7 @@
     }
 
     out.innerHTML = '<div class="note"><span class="spin">&#9676;</span> Asking the seller&hellip;</div>';
-    askSellerToVerify(txid, out);
+    askSellerToVerify(txid, out, false);
   });
 
   /**
@@ -1311,7 +1314,7 @@
    * A `valid: false` here is not a failure: until the payment is mined it is the only
    * truthful answer, which is the same reason the x402 gate answers `402 pending`.
    */
-  function askSellerToVerify(txid, into) {
+  function askSellerToVerify(txid, into, paidHere) {
     var origin = sellerOrigin();
     if (origin === null || sellerInvoice === null) return;
     var invoiceId = sellerInvoice.invoiceId;
@@ -1334,8 +1337,12 @@
               return;
             }
             into.innerHTML =
-              '<div class="note"><span class="spin">&#9676;</span> Paid. Waiting for the ' +
-              "seller to see it confirm on the chain&hellip;<br>" +
+              '<div class="note"><span class="spin">&#9676;</span> ' +
+              (paidHere
+                ? "Paid. Waiting for the seller to see it confirm on the chain&hellip;"
+                : "Asking the seller. It has not seen this transaction yet, which means " +
+                  "either it is still confirming or the ID is not one it was paid by&hellip;") +
+              "<br>" +
               '<span class="muted">' + escapeHtml(String(result.reason || "not yet")) +
               "</span></div>";
             setTimeout(attempt, 20000);
@@ -1397,6 +1404,44 @@
   }
 
   /**
+   * Does this look like a shielded Zcash address?
+   *
+   * A shape check, not a checksum. Decoding bech32m in the page would be the rigorous
+   * answer and is not worth the code: the wallet verifies the address properly before it
+   * signs anything, so the only job here is to catch a typo or a pasted-wrong-thing while
+   * the person is still looking at the field, rather than let them meet it as a wallet
+   * error three clicks later.
+   *
+   * Deliberately permissive about *which* shielded form. Unified addresses are what Byte
+   * issues, but a Sapling address is still shielded and still spendable, and refusing one
+   * would be this page inventing a restriction the protocol does not have. Transparent
+   * addresses are refused with their own message, because sending there is not a typo but
+   * a different and much worse idea: it publishes the amount.
+   */
+  var SHIELDED_ADDRESS = /^(u1|utest1|zs1|ztestsapling1)[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{30,}$/;
+  var TRANSPARENT_ADDRESS = /^(t1|t3|tm|t2)[1-9A-HJ-NP-Za-km-z]{20,}$/;
+
+  /** null when the address is usable, or a sentence saying what is wrong with it. */
+  function shieldedAddressProblem(address) {
+    if (address === "") return "Enter an address to send to.";
+    if (TRANSPARENT_ADDRESS.test(address)) {
+      return (
+        "That is a <strong>transparent</strong> address, and Byte will not send there: " +
+        "the amount would be published on a public chain. Use a shielded address, which " +
+        "starts with <strong>u1</strong> on mainnet or <strong>utest1</strong> on testnet."
+      );
+    }
+    if (!SHIELDED_ADDRESS.test(address)) {
+      return (
+        "That does not look like a Zcash shielded address. One starts with " +
+        "<strong>u1</strong> on mainnet or <strong>utest1</strong> on testnet, and is a " +
+        "long string of letters and digits with no spaces. Check you copied all of it."
+      );
+    }
+    return null;
+  }
+
+  /**
    * "0.001" -> "100000". Exact string arithmetic; a float here could pay the wrong amount.
    *
    * Named apart from `zecToZat` on purpose. This one used to share that name, and a later
@@ -1451,8 +1496,9 @@
   el("pr-build").addEventListener("click", function () {
     var out = el("pr-result");
     var to = el("pr-to").value.trim();
-    if (to === "") {
-      out.innerHTML = '<div class="note bad">Enter an address to send to.</div>';
+    var problem = shieldedAddressProblem(to);
+    if (problem !== null) {
+      out.innerHTML = '<div class="note bad">' + problem + "</div>";
       return;
     }
 

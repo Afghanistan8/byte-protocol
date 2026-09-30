@@ -26,11 +26,11 @@ disagreed with a brief, I followed the source and said so.
 <!--gap-counts-->
 | Status | Count |
 |--------|------:|
-| `Done` | 98 |
+| `Done` | 99 |
 | `Partial` | 11 |
 | `Missing` | 31 |
 | `Not feasible yet` | 5 |
-| **Total sub-items** | **145** |
+| **Total sub-items** | **146** |
 <!--/gap-counts-->
 
 ---
@@ -39,7 +39,7 @@ disagreed with a brief, I followed the source and said so.
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| **A1** A fee invoice could not be paid by Byte's own client | `Done` | `wallet/src/types.ts` `SendRequest` (union) and `sendOutputs`; `client/src/payer.ts` pays every output and guards the total; `byte-walletd` `send_to` builds one `zip321::TransactionRequest` via `propose_transfer` with `SpendPolicy::shielded_pools([Ironwood])` | `client/src/fee-loop.test.ts` (7, over real HTTP); `server/src/fee.test.ts` now pays through `BytePayer`; `walletd.test.ts` "sends several outputs as one transaction" | **A real testnet payment carrying a fee has not been run.** Needs Asuzu (funds). Not yet in `CHAIN_RUNS.md` |
+| **A1** A fee invoice could not be paid by Byte's own client | `Done` | `wallet/src/types.ts` `SendRequest` (union) and `sendOutputs`; `client/src/payer.ts` pays every output and guards the total; `byte-walletd` `send_to` builds one `zip321::TransactionRequest` via `propose_transfer` with `SpendPolicy::shielded_pools([Ironwood])` | `client/src/fee-loop.test.ts` (7, over real HTTP); `server/src/fee.test.ts` now pays through `BytePayer`; `walletd.test.ts` "sends several outputs as one transaction"; **`CHAIN_RUNS.md` run 5, on mainnet**: txid `bf7f7ea4…e315f6eb`, 50,000 zat to the payee carrying the memo and 1,250 zat of fee carrying none, in one transaction | — |
 | **A1b** `ByteFacilitator` could not charge the fee at all (found during A8) | `Done` | `facilitator/src/facilitator.ts` takes `fee` and `feeWallet`, publishes terms in `info().fee`, refuses a fee without a `feeWallet` and a spendable `feeWallet` | `facilitator.test.ts` "a facilitator that charges a fee" (7) | — |
 | **A2** Testnet already computed post-NU7 25 s block times | `Done` | `core/src/network.ts` `blockTargetSeconds(branchId)`; `byte-walletd` `/status` reports `consensusBranchId` from `GetLightdInfo` | `core/src/network.test.ts` (13); `server.test.ts` "Retry-After follows the chain's consensus branch" (3), including testnet height 4,414,380 → 75 s | **NU7 branch `0x77190AD9` (ZIP 259, Draft) is not yet observable on a live chain**, and both activation heights are `TBD` in ZIP 259. Recorded in `TOOLCHAIN.md` |
 | **A3** Dashboard claimed a PCZT spend path that does not exist | `Done` | `apps/site/app/index.html`, `apps/site/README.md`: claims removed, snap described as read-only | Removed by review; the site consistency grep finds no `signPczt` | Restore only with B4 and a verified snap method |
@@ -48,6 +48,7 @@ disagreed with a brief, I followed the source and said so.
 | **A6** README contradicted itself and lagged the code | `Done` | `README.md` package table, "Not hidden" list, USD price-risk section | `stats-consistency.test.ts` covers the counts; the wording is checked by the consistency audit below | — |
 | **A7** Site fee line conflicted with F4 | `Done` | `apps/site/index.html`, `README.md` Fees, `docs/DECISIONS.md` #6/#6b, `core/src/fee.ts` | Consistency audit row "Fee statements agree" | — |
 | **A8** Audits out of date | `Done` | This file and `CONSISTENCY_AUDIT.md`; `scripts/gap-counts.ts` computes the counts from the rows | `stats-consistency.test.ts` "states the status counts its own rows add up to" and "claims Done only where a test is named" | Must be re-run after Part B |
+| **A10** Byte could not verify a payment from any wallet but its own | `Done` | `byte-walletd/src/chain.rs` `enhance_transactions` drains the backend's own queue of outstanding data requests: `Enhancement` answered through `GetTransaction` and `decrypt_and_store_transaction`, `GetStatus` with whether the chain has the transaction, and one the server cannot supply reported as unrecognised rather than re-requested on every sync forever | **`CHAIN_RUNS.md` run 4, on mainnet**: invoice `14c009b5…` settled unattended from a third-party wallet, the seller's log reading `pending → pending → SETTLED` where it had previously read `invalid_payment` | **No unit test, and there cannot easily be one.** The mock chain has no notion of a compact block, so a mock memo is simply present. The property that broke is a light-client one and only a real light-client connection exercises it |
 | **A9** Nothing issued a receipt at settlement (found during A8) | `Done` | `server/src/verifier.ts` `receipts` option signs and stores a receipt on success and reports `receiptError` rather than stranding a paid payer | `server.test.ts` "receipts are issued at settlement" (5) | **The x402, MCP and A2A gates do not yet hand the receipt back in the response.** That is B7 |
 
 ## F1: Shielded payments

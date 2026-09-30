@@ -46,13 +46,13 @@ from anyone else's wallet at all. A light wallet scans compact blocks, which omi
 design; the memo arrives only if the wallet then downloads the whole transaction, and
 `byte-walletd` never did. Every payment it had ever verified was one it had also *sent*, so
 the memo was already in its own records. The defect was invisible for exactly as long as Byte
-was talking to itself. Nothing in <!--stats:total-->844<!--/stats--> tests could have caught
+was talking to itself. Nothing in <!--stats:total-->866<!--/stats--> tests could have caught
 it: the mock chain has no compact blocks, so its memos are simply present.
 
 That is the argument for real runs over a green suite, and it is why the limitations in this
 README are written as plainly as the claims.
 
-**<!--stats:total-->844<!--/stats--> tests pass**: <!--stats:ts-->778<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust.
+**<!--stats:total-->866<!--/stats--> tests pass**: <!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->66<!--/stats--> Rust.
 
 ---
 
