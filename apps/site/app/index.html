@@ -856,6 +856,31 @@
    * precisely and helps nobody. The original message is kept underneath.
    */
   function explainSendError(message) {
+    // Noir has the note and knows it is confirmed, but has not finished building the
+    // witness data it needs to prove the note is unspent. Nothing here can repair that: it
+    // is the wallet's own scan state, and only the wallet can finish or redo the scan.
+    var stale = /WALLET_SPENDABILITY_INCONSISTENT[\s\S]*?totaling\s+(\d+)\s*zatoshis/.exec(message);
+    if (stale !== null) {
+      return (
+        "<strong>Not sent: your wallet has not finished reading your coins.</strong><br>" +
+        "Nothing was sent and no money moved.<br><br>" +
+        "Noir can see " + (Number(stale[1]) / 1e8) + " ZEC arrive and confirm, but it has not " +
+        "finished working out the extra data it needs before it can spend that coin. Until " +
+        "it does, it will not let the payment go out. This is Noir catching up with itself, " +
+        "not a problem with your coins or the address.<br><br>" +
+        "<strong>What to do:</strong><br>" +
+        "1. Open Noir and leave it open, on screen, until it stops showing that it is " +
+        "syncing or scanning.<br>" +
+        "2. Try the payment again.<br>" +
+        "3. Still the same? In Noir's settings, look for <strong>Rescan</strong> or " +
+        "<strong>Resync</strong> and run it. That makes the wallet read your coins again " +
+        "from the chain. It takes a while and it moves no money.<br><br>" +
+        "Your coins are safe either way. They are on the chain; this is only about what the " +
+        "wallet has worked out about them so far." +
+        '<br><br><span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
+      );
+    }
+
     // The wallet stamps every transaction with an expiry height, and the network rejects one
     // that arrives after it. Seeing this means Noir built the payment against a block it
     // thought was current and the real chain had already moved past the expiry, which is a
