@@ -18,4 +18,5 @@ pub mod chain;
 pub mod config;
 pub mod keys;
 pub mod memo;
+pub mod split_sign;
 pub mod state;

@@ -49,7 +49,10 @@ zcash_protocol = "0.10.6"
 zcash_address = "0.13.0"
 zcash_primitives = "0.30.1"
 zip321 = "0.9.0"
-orchard = "0.15.5"
+# Already in the tree via zcash_client_backend; named directly so split build/sign
+# can use the roles. Pinned to the version docs/TOOLCHAIN.md records.
+pczt = { version = "0.9.3", features = ["orchard", "prover", "signer"] }
+orchard = { version = "0.15.5", features = ["circuit"] }
 zip32 = "0.2"
 # Sapling proving parameters. `create_proposed_transactions` requires a Sapling
 # SpendProver and OutputProver in its signature even for an Ironwood-only transfer, so a

@@ -351,6 +351,7 @@ dependencies = [
  "hex",
  "hmac 0.12.1",
  "orchard",
+ "pczt",
  "rand",
  "rusqlite",
  "secrecy 0.10.3",
@@ -1747,6 +1748,7 @@ checksum = "a5592f4f3eba7f9344cc423f45b6e65911e0630c9b89968d5a20792aadd5a0eb"
 dependencies = [
  "blake2b_simd",
  "bls12_381",
+ "document-features",
  "ff",
  "getset",
  "jubjub",
