@@ -310,6 +310,23 @@
             transparent would publish the amount, so this refuses rather than falling back,
             exactly as the protocol does.
           </p>
+          <div class="note" style="margin-bottom:16px">
+            <strong>No invoice yet? Make a practice one.</strong>
+            Choose where to send it and how much, and this page builds a Byte-format invoice
+            for you and fills in the box below. Then press Review in Noir.
+            <div style="margin-top:12px">
+              <label class="lab" for="pr-to">Send to (a shielded address)</label>
+              <input type="text" id="pr-to" placeholder="utest1... or u1..." spellcheck="false">
+              <button class="btn small" id="pr-mine" style="margin-top:8px">Use my own Noir address</button>
+            </div>
+            <div style="margin-top:12px">
+              <label class="lab" for="pr-amt">Amount (ZEC)</label>
+              <input type="text" id="pr-amt" value="0.001" spellcheck="false">
+            </div>
+            <button class="btn small" id="pr-build" style="margin-top:11px">Build practice invoice</button>
+            <div id="pr-result" style="margin-top:12px"></div>
+          </div>
+
           <label class="lab" for="noir-uri">ZIP-321 URI</label>
           <input type="text" id="noir-uri" placeholder="zcash:u1...?amount=0.001&amp;memo=QllURTF8..." spellcheck="false">
           <button class="btn small" id="noir-send" style="margin-top:11px">Review in Noir</button>
@@ -775,6 +792,98 @@
           escapeHtml(error && error.message ? error.message : "unknown error") +
           "</div>";
       });
+  });
+
+  /* ------------------------------------------------------------ practice invoice */
+
+  // A fixed demo key. A real seller keeps its key secret; this page has no seller, so the
+  // memo it builds is well-formed but no server will recognise it as one it issued.
+  var PRACTICE_KEY = new Uint8Array(32).fill(7);
+
+  function toHex(buffer) {
+    return Array.prototype.map
+      .call(new Uint8Array(buffer), function (b) { return b.toString(16).padStart(2, "0"); })
+      .join("");
+  }
+
+  function toBase64Url(text) {
+    var bytes = new TextEncoder().encode(text);
+    var binary = "";
+    bytes.forEach(function (b) { binary += String.fromCharCode(b); });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  /** "0.001" -> "100000". Exact string arithmetic; a float here could pay the wrong amount. */
+  function zecToZat(zec) {
+    var m = /^(0|[1-9][0-9]*)(?:\.([0-9]{1,8}))?$/.exec(zec);
+    if (!m) throw new Error("Amount must be a plain number with at most 8 decimals, like 0.001");
+    var zat = BigInt(m[1]) * 100000000n + BigInt((m[2] || "").padEnd(8, "0"));
+    if (zat === 0n) throw new Error("Amount must be more than zero");
+    return zat.toString();
+  }
+
+  /** The same binding the protocol computes: HMAC-SHA256 over id, amount, address. */
+  function practiceBinding(invoiceId, zat, payTo) {
+    var preimage = new TextEncoder().encode(invoiceId + "\u0000" + zat + "\u0000" + payTo);
+    return crypto.subtle
+      .importKey("raw", PRACTICE_KEY, { name: "HMAC", hash: "SHA-256" }, false, ["sign"])
+      .then(function (key) { return crypto.subtle.sign("HMAC", key, preimage); })
+      .then(function (sig) { return toHex(sig).slice(0, 32); });
+  }
+
+  el("pr-mine").addEventListener("click", function () {
+    var out = el("pr-result");
+    out.innerHTML = '<div class="note"><span class="spin">&#9676;</span> Asking Noir&hellip;</div>';
+    noirRequest("zcash_getAddresses")
+      .then(function (result) {
+        // The response shape is not something to guess at silently: take a string, an
+        // array of strings, or objects carrying an address, and say so if it is none.
+        var list = Array.isArray(result) ? result : [result];
+        var found = null;
+        list.forEach(function (item) {
+          if (found) return;
+          if (typeof item === "string") found = item;
+          else if (item && typeof item.address === "string") found = item.address;
+          else if (item && typeof item.shielded === "string") found = item.shielded;
+        });
+        if (!found) throw new Error("Noir returned addresses in a shape this page does not recognise");
+        el("pr-to").value = found;
+        out.innerHTML = '<div class="note good">Filled in your Noir address.</div>';
+      })
+      .catch(function (error) {
+        out.innerHTML =
+          '<div class="note bad">Could not read your address: ' +
+          escapeHtml(error && error.message ? error.message : "unknown error") +
+          ". Paste one in by hand.</div>";
+      });
+  });
+
+  el("pr-build").addEventListener("click", function () {
+    var out = el("pr-result");
+    var to = el("pr-to").value.trim();
+    if (to === "") {
+      out.innerHTML = '<div class="note bad">Enter an address to send to.</div>';
+      return;
+    }
+
+    var zat;
+    try { zat = zecToZat(el("pr-amt").value.trim()); }
+    catch (e) { out.innerHTML = '<div class="note bad">' + escapeHtml(e.message) + "</div>"; return; }
+
+    var idBytes = crypto.getRandomValues(new Uint8Array(16));
+    var invoiceId = toHex(idBytes);
+
+    practiceBinding(invoiceId, zat, to).then(function (tag) {
+      var memo = "BYTE1|" + invoiceId + "|" + tag;
+      var zec = el("pr-amt").value.trim();
+      el("noir-uri").value = "zcash:" + to + "?amount=" + zec + "&memo=" + toBase64Url(memo);
+      out.innerHTML =
+        '<div class="note good"><strong>Built.</strong> Now press <strong>Review in Noir</strong> below.</div>' +
+        '<div class="note" style="margin-top:8px">' +
+        "This is a practice invoice: the memo is a real Byte memo, but no seller issued it, " +
+        "so nothing will mark it as paid. It shows the wallet flow and the private payment. " +
+        "A Byte seller is what verifies one.</div>";
+    });
   });
 
   /** Minimal ZIP-321 reader: enough to hand a Byte invoice to a wallet. */
