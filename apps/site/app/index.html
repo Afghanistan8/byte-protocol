@@ -1164,11 +1164,17 @@
       "It can spend " + have + " ZEC and this payment needs " + need +
       " ZEC (the amount plus the network fee).<br><br>" +
       "<strong>Check these, in order:</strong><br>" +
-      "1. <strong>Are the coins there?</strong> Open Noir and look at the balance.<br>" +
-      "2. <strong>Are they confirmed?</strong> New coins take a few minutes. Wait, then try again.<br>" +
+      "1. <strong>Did you just pay something?</strong> The leftover from a payment comes back " +
+      "as new change, and a wallet will not spend its own change immediately. ZIP 315 makes " +
+      "it wait <strong>3 blocks</strong>; coins someone else sent you wait <strong>10</strong>. " +
+      "This is the usual reason a wallet that plainly holds money reports none.<br>" +
+      "2. <strong>Are the coins there at all?</strong> Open your wallet and look at the balance. " +
+      "If it shows a balance and this says zero, the wallet is behind the chain: leave it open " +
+      "until it stops syncing, then try again.<br>" +
       "3. <strong>Are they shielded?</strong> Coins sitting in a transparent address cannot " +
-      "be spent here. Byte only spends shielded coins, so shield them in Noir first.<br>" +
-      "4. <strong>Right network?</strong> The faucet coins and this wallet must both be testnet.<br><br>" +
+      "be spent here. Byte only spends shielded coins, so shield them first.<br>" +
+      "4. <strong>Right network?</strong> The address and the wallet must be on the same " +
+      "network: <strong>u1</strong> for mainnet, <strong>utest1</strong> for testnet.<br><br>" +
       '<span class="muted">Noir said: ' + escapeHtml(message) + "</span>"
     );
   }
