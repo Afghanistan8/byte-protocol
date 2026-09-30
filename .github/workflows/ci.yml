@@ -22,6 +22,13 @@
 # that is not theirs, from a clean checkout. This repository ships a test count on its front
 # page; until now that number was a claim about one laptop.
 #
+# ## Why the runner is pinned
+#
+# GitHub's own annotation on the first run: "The ubuntu-latest label will migrate to Ubuntu 26
+# beginning October 19, 2026." That is before this project is judged, and a runner image
+# changing underneath a submission during judging is a bad way to find out what depended on
+# it. Pinned to ubuntu-24.04, which is what ubuntu-latest resolves to today.
+#
 # ## What this does not do
 #
 # It never spends money. The testnet and mainnet runs are gated behind BYTE_TESTNET=1 and
@@ -46,7 +53,7 @@ permissions:
 jobs:
   typescript:
     name: TypeScript
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
@@ -101,7 +108,7 @@ jobs:
 
   rust:
     name: Rust
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: crates/byte-walletd
@@ -127,7 +134,7 @@ jobs:
 
   docs:
     name: Docs agree with the code
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
