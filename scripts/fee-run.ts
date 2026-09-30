@@ -133,7 +133,7 @@ async function main(): Promise<void> {
       `not enough spendable value: have ${balance.spendableZat}, need about ${upperBound}. ` +
         (choice.real
           ? "Fund the wallet with real ZEC, or lower BYTE_TESTNET_PRICE."
-          : "Fund the wallet from a faucet — see docs/TESTNET_RUNS.md."),
+          : "Fund the wallet from a faucet — see docs/CHAIN_RUNS.md."),
     );
   }
 
@@ -289,7 +289,7 @@ async function main(): Promise<void> {
   if (failed > 0) {
     throw new Error(`${failed} claim(s) failed; this run is not evidence of anything good`);
   }
-  line(`    Log this run in docs/TESTNET_RUNS.md with txid ${paid.txid}.`);
+  line(`    Log this run in docs/CHAIN_RUNS.md with txid ${paid.txid}.`);
   line();
 }
 

@@ -19,7 +19,7 @@ address, or any balance.
 Hackathon-stage, built for the [ZECATHON](https://thezecathon.com/) in the Shielded Payments
 track. It has not been audited. Do not put mainnet funds behind it.
 
-**It works on a real chain.** [docs/TESTNET_RUNS.md](docs/TESTNET_RUNS.md) records the first
+**It works on a real chain.** [docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md) records the first
 end-to-end payment, verifiable on any testnet explorer:
 
 ```
@@ -281,7 +281,7 @@ not be fetching scripts from third parties who would then see every operator who
 
 For the sidecar and a real testnet payment, see
 [crates/byte-walletd/.env.example](crates/byte-walletd/.env.example) and
-[docs/TESTNET_RUNS.md](docs/TESTNET_RUNS.md). With a funded wallet and the sidecar running:
+[docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md). With a funded wallet and the sidecar running:
 
 ```bash
 BYTE_TESTNET=1 BYTE_WALLETD_TOKEN=... pnpm test:testnet
@@ -303,7 +303,7 @@ because it spends real TAZ.
 | [TOOLCHAIN.md](docs/TOOLCHAIN.md) | Every version and protocol fact, with its source and date |
 | [DECISIONS.md](docs/DECISIONS.md) | What was chosen and why |
 | [RAILS.md](docs/RAILS.md) | How value gets in, and what each route exposes |
-| [TESTNET_RUNS.md](docs/TESTNET_RUNS.md) | Real transactions, logged |
+| [CHAIN_RUNS.md](docs/CHAIN_RUNS.md) | Real transactions, logged |
 | [API.md](docs/API.md) | All three API surfaces, with real request and response bodies |
 | [ROADMAP.md](docs/ROADMAP.md) | What is next, what is deliberately not being built, what risks are carried |
 | [CONSISTENCY_AUDIT.md](docs/CONSISTENCY_AUDIT.md) | Every claim traced to its code and its test |

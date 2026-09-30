@@ -39,7 +39,7 @@ disagreed with a brief, I followed the source and said so.
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| **A1** A fee invoice could not be paid by Byte's own client | `Done` | `wallet/src/types.ts` `SendRequest` (union) and `sendOutputs`; `client/src/payer.ts` pays every output and guards the total; `byte-walletd` `send_to` builds one `zip321::TransactionRequest` via `propose_transfer` with `SpendPolicy::shielded_pools([Ironwood])` | `client/src/fee-loop.test.ts` (7, over real HTTP); `server/src/fee.test.ts` now pays through `BytePayer`; `walletd.test.ts` "sends several outputs as one transaction" | **A real testnet payment carrying a fee has not been run.** Needs Asuzu (funds). Not yet in `TESTNET_RUNS.md` |
+| **A1** A fee invoice could not be paid by Byte's own client | `Done` | `wallet/src/types.ts` `SendRequest` (union) and `sendOutputs`; `client/src/payer.ts` pays every output and guards the total; `byte-walletd` `send_to` builds one `zip321::TransactionRequest` via `propose_transfer` with `SpendPolicy::shielded_pools([Ironwood])` | `client/src/fee-loop.test.ts` (7, over real HTTP); `server/src/fee.test.ts` now pays through `BytePayer`; `walletd.test.ts` "sends several outputs as one transaction" | **A real testnet payment carrying a fee has not been run.** Needs Asuzu (funds). Not yet in `CHAIN_RUNS.md` |
 | **A1b** `ByteFacilitator` could not charge the fee at all (found during A8) | `Done` | `facilitator/src/facilitator.ts` takes `fee` and `feeWallet`, publishes terms in `info().fee`, refuses a fee without a `feeWallet` and a spendable `feeWallet` | `facilitator.test.ts` "a facilitator that charges a fee" (7) | — |
 | **A2** Testnet already computed post-NU7 25 s block times | `Done` | `core/src/network.ts` `blockTargetSeconds(branchId)`; `byte-walletd` `/status` reports `consensusBranchId` from `GetLightdInfo` | `core/src/network.test.ts` (13); `server.test.ts` "Retry-After follows the chain's consensus branch" (3), including testnet height 4,414,380 → 75 s | **NU7 branch `0x77190AD9` (ZIP 259, Draft) is not yet observable on a live chain**, and both activation heights are `TBD` in ZIP 259. Recorded in `TOOLCHAIN.md` |
 | **A3** Dashboard claimed a PCZT spend path that does not exist | `Done` | `apps/site/app/index.html`, `apps/site/README.md`: claims removed, snap described as read-only | Removed by review; the site consistency grep finds no `signPczt` | Restore only with B4 and a verified snap method |
@@ -54,9 +54,9 @@ disagreed with a brief, I followed the source and said so.
 
 | Item | Status | Where it lives | Test that proves it | What's missing |
 |------|--------|----------------|---------------------|----------------|
-| Agent-to-agent payments are shielded Ironwood transfers | `Done` | `core/src/pool.ts`; `server/src/verifier.ts`; `byte-walletd/src/chain.rs` | `server.test.ts` wrong-pool cases; two real testnet payments in `TESTNET_RUNS.md` | — |
+| Agent-to-agent payments are shielded Ironwood transfers | `Done` | `core/src/pool.ts`; `server/src/verifier.ts`; `byte-walletd/src/chain.rs` | `server.test.ts` wrong-pool cases; two real testnet payments in `CHAIN_RUNS.md` | — |
 | Refuses to pay from transparent or Orchard sources | `Done` | `chain.rs` `SpendPolicy::shielded_pools([Ironwood])` **and** `assert_ironwood_funded`; `mock.ts` throws `wrong_pool_source` | `chain.rs` unit tests (4) on `ironwood_only_refusal`; `mock.test.ts`; `walletd.test.ts` "raises wrong_pool_source" | No real-chain test with a wallet holding mixed-pool notes. The walk over a live `Proposal` is not unit-tested |
-| One transaction carries both value and memo | `Done` | `chain.rs` `send_to` | `TESTNET_RUNS.md` run 2 | — |
+| One transaction carries both value and memo | `Done` | `chain.rs` `send_to` | `CHAIN_RUNS.md` run 2 | — |
 | Documented: no two-transaction window | `Done` | `docs/SPEC.md` §5.6 | — | — |
 | Documented: no "silent failure" trick needed | `Done` | `docs/SPEC.md` §5.6 | — | — |
 

@@ -8,7 +8,7 @@
  * things that usually go unshown: a replay being refused, and a spend guard refusing to pay.
  *
  * It runs against the mock wallet, so it needs no chain and no funds. The same code paths run
- * against `byte-walletd` on testnet — see docs/TESTNET_RUNS.md for a real one.
+ * against `byte-walletd` on testnet — see docs/CHAIN_RUNS.md for a real one.
  */
 
 import { NETWORK_TESTNET } from "@byte-protocol/core";
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
     line();
     line("  On a real chain an observer sees that a shielded transaction happened.");
     line("  Not the amount, not either address, not a balance. The real testnet run in");
-    line("  docs/TESTNET_RUNS.md shows the change output landing in Ironwood too, so");
+    line("  docs/CHAIN_RUNS.md shows the change output landing in Ironwood too, so");
     line("  nothing crossed pools and no net amount was revealed under ZIP 318.");
     line("  (This mock chain does not model change outputs.)");
 

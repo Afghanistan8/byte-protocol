@@ -382,7 +382,7 @@ fn open_wallet_db(network: Network, path: &Path) -> Result<ByteWalletDb, ChainEr
 ///
 /// The test suite could not have caught this: the mock chain has no notion of a compact
 /// block, so its memos are simply present. Neither could the earlier testnet runs, which
-/// state in `docs/TESTNET_RUNS.md` that both roles ran against one wallet — that limitation
+/// state in `docs/CHAIN_RUNS.md` that both roles ran against one wallet — that limitation
 /// was hiding a bug, not merely narrowing a claim.
 ///
 /// # What it does
@@ -711,7 +711,7 @@ mod tests {
     /// is not unit-tested: synthesising a `Proposal` needs a constructed Orchard note, an
     /// anchor, a transaction request and a balance, and a test built on that scaffolding
     /// mostly proves the scaffolding. The walk is two accessors the compiler checks, and
-    /// `docs/TESTNET_RUNS.md` covers it against a real chain.
+    /// `docs/CHAIN_RUNS.md` covers it against a real chain.
     #[test]
     fn ironwood_notes_are_the_only_acceptable_source() {
         assert_eq!(

@@ -1,13 +1,24 @@
-# Testnet runs
+# Chain runs
 
-Real transactions on Zcash testnet, logged as they happen. Everything here is verifiable
-on a testnet explorer.
+Real transactions, logged as they happen and verifiable on a block explorer.
 
-TAZ has no monetary value. These runs prove the mechanism, not custody of anything.
+**Read the network on each run.** They are not all the same chain, and the difference
+matters: TAZ has no monetary value, so a testnet run proves a mechanism and nothing about
+custody, while a mainnet run moved real ZEC and carries the weight that goes with that.
+This file was called `TESTNET_RUNS.md` until the mainnet runs landed, which would have
+invited exactly the wrong reading.
+
+| Run | Date | Network | What it showed |
+|-----|------|---------|----------------|
+| 1 | 2026-09-29 | **testnet** | The sidecar can pay an Ironwood invoice, and a txid is byte-flipped when displayed |
+| 2 | 2026-09-29 | **testnet** | The x402 adapter, issuer, verifier and sidecar agree with each other and with consensus |
+| 3 | 2026-09-30 | **testnet** | A browser wallet can pay a Byte-format invoice. Wallet leg only |
+| 4 | 2026-09-30 | **MAINNET** | Two separate wallets, a real seller verifying, and the defect that made third-party payments impossible |
+| 5 | 2026-09-30 | **MAINNET** | A fee-carrying invoice settling in one transaction, both outputs |
 
 ---
 
-## 2026-09-29 — first shielded Ironwood payment
+## Run 1 · testnet · 2026-09-29 — first shielded Ironwood payment
 
 **Environment**
 
@@ -128,7 +139,7 @@ could expose it.
 
 ---
 
-## 2026-09-29 — the x402 adapter, end to end
+## Run 2 · testnet · 2026-09-29 — the x402 adapter, end to end
 
 The second run exercises the **whole stack against a real chain**: the x402 adapter, the
 invoice issuer, the payment verifier, the spend guard, the `WalletdWallet` backend and the
@@ -209,7 +220,7 @@ adapter, the issuer, the verifier and the sidecar agree with each other and with
 
 ---
 
-## 2026-09-30 — paid from a browser, through a third-party wallet
+## Run 3 · testnet · 2026-09-30 — paid from a browser, through a third-party wallet
 
 The first two runs both went through `byte-walletd`, the sidecar I wrote. This one does not.
 A person opened <https://byte-lime.vercel.app/app/>, connected the **Noir** browser
@@ -309,7 +320,7 @@ old row claimed and that it was wrong.
 
 ---
 
-## 2026-09-30 — mainnet, two separate wallets, and the defect that only this could find
+## Run 4 · MAINNET · 2026-09-30 — two separate wallets, and the defect only this could find
 
 The first Byte payment on **mainnet**, and the first paid by a wallet that is not the
 seller. Asuzu's call to move here, over my advice, and it was the right call: the run found
@@ -353,6 +364,28 @@ was refused as `replay`, which is the invoice behaving correctly.
 
 And one no previous run could claim: **two genuinely separate wallets**. Runs 1, 2 and 3 all
 had one wallet paying itself.
+
+### It works twice, and the second time nobody touched it
+
+A second payment, an hour later, through the same seller:
+
+| | |
+|---|---|
+| Invoice | `14c009b5598a6a0826b3b2789cdad538` |
+| txid | `488751f9280d8d50b5c0ffa68eb7477fe6b477d88fc1967e5857c1edec319324` |
+| Mined | block 3,501,706 |
+| Memo read back | `BYTE1\|14c009b5598a6a0826b3b2789cdad538\|719822ce9995482184ac34d640e013b2` |
+
+This one matters more than the first. The first needed the sidecar restarted before the fix
+took effect. This one ran the whole path unattended: issue, pay from a separate wallet, scan,
+fetch the full transaction, decrypt the memo, verify. The seller's log reads
+
+```
+pending → pending → pending → SETTLED
+```
+
+`pending` is "seen, waiting for confirmations". Before the fix below it said
+`invalid_payment`, and would have said it forever.
 
 ### The defect: Byte could not verify a payment from anyone else
 
@@ -404,7 +437,7 @@ result.
 
 ---
 
-## 2026-09-30 — a fee-carrying invoice, settled in one transaction, on mainnet
+## Run 5 · MAINNET · 2026-09-30 — a fee-carrying invoice, settled in one transaction
 
 The last claim in this repository that rested on mock tests alone. Byte's facilitator fee is
 a **second output on the same transaction**, not a separate payment, and that shape had never

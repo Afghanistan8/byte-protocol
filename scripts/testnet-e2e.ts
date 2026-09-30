@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     throw new Error(
       `not enough spendable value: have ${balance.spendableZat}, need about ${
         BigInt(PRICE_ZAT) + 20_000n
-      }. Fund the wallet from a faucet — see docs/TESTNET_RUNS.md.`,
+      }. Fund the wallet from a faucet — see docs/CHAIN_RUNS.md.`,
     );
   }
 
@@ -266,7 +266,7 @@ async function main(): Promise<void> {
     line("    separate wallets can transact. It proves the adapter, the issuer, the");
     line("    verifier and the sidecar agree with each other and with the chain.");
     line();
-    line(`    Log this run in docs/TESTNET_RUNS.md with txid ${paidTxid}.`);
+    line(`    Log this run in docs/CHAIN_RUNS.md with txid ${paidTxid}.`);
     line();
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));

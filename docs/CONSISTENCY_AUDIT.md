@@ -32,7 +32,7 @@ adapter and rail checked for a test file.
 
 | Claim | Where stated | Implemented in | Proven by |
 |-------|--------------|----------------|-----------|
-| Settles in the Ironwood pool | README, SPEC §3 | `core/src/pool.ts` `isAcceptedPool`; `chain.rs` `pool_name` | `server.test.ts` "reports invalid_payment for a payment in the wrong pool"; live run in TESTNET_RUNS |
+| Settles in the Ironwood pool | README, SPEC §3 | `core/src/pool.ts` `isAcceptedPool`; `chain.rs` `pool_name` | `server.test.ts` "reports invalid_payment for a payment in the wrong pool"; live run in CHAIN_RUNS |
 | Fresh diversified address per invoice | README, SPEC §5.1 | `keys.rs` `DiversifierCursor`; `issuer.ts` | `keys.rs` "the cursor never repeats an address" (200); `server.test.ts` "mints a fresh address for every invoice" (50); `mock.test.ts` (500) |
 | Address is Orchard-typecode, no transparent receiver | README, SPEC §3, TOOLCHAIN | `keys.rs` `BYTE_ADDRESS_REQUEST = UnifiedAddressRequest::ORCHARD` | `keys.rs` "addresses encode for the right network"; the constant is `(Require, Omit, Omit)` in librustzcash |
 | The pool is read off the note, not the address | README, ARCHITECTURE, SPEC §3 | `verifier.ts` `isAcceptedPool(settling.pool)`; `chain.rs` `outputs_for_txid` | `server.test.ts` wrong-pool test; real run shows `"pool": "ironwood"` |
@@ -61,8 +61,12 @@ adapter and rail checked for a test file.
 | Unsynced wallets refuse rather than return zero | API, SECURITY | `state.rs` `NotSynced`; `console/src/api.ts` `balance: null` | `state.rs` "an unsynced wallet refuses to report chain facts"; `console.test.ts` "reports a null balance rather than zeroes" |
 | The console is owner-only | README, API | `console/src/api.ts` — no exempt route | `console.test.ts` "has no unauthenticated route, not even a health check" |
 | The console loads nothing externally | README | `ui.ts` — single self-contained file | `console.test.ts` "loads nothing from anywhere else" |
-| Real shielded payment on testnet | README, TESTNET_RUNS | — | txid `15a1ded9…768369`, block 4,413,018 |
-| The x402 adapter works against a real chain | README, TESTNET_RUNS | `adapters/x402`, `WalletdWallet` | txid `49ab740b…3aa712`, both outputs Ironwood, memo intact |
+| Real shielded payment on testnet | README, CHAIN_RUNS | — | txid `15a1ded9…768369`, block 4,413,018 |
+| Real shielded payment on **mainnet** | README, CHAIN_RUNS | — | txid `a6eb7a4e…ca35a94`, block 3,501,656, and `488751f9…ec319324`, block 3,501,706 |
+| A payment from a wallet Byte did not write, verified by a seller | CHAIN_RUNS run 4 | `enhance_transactions` in `chain.rs` | Memo read back off-chain identical to the payer's, both mainnet runs |
+| Two genuinely separate wallets | CHAIN_RUNS run 4 | — | Payer `u1s5v6…dprs79`; seller a wallet created that hour holding nothing |
+| A fee-carrying invoice settles in one transaction | README, SPEC §5.5, CHAIN_RUNS run 5 | `issuer.ts` `#feeFor`, multi-output `SendRequest` | txid `bf7f7ea4…e315f6eb`: 50,000 payee with memo, 1,250 fee without, all Ironwood |
+| The x402 adapter works against a real chain | README, CHAIN_RUNS | `adapters/x402`, `WalletdWallet` | txid `49ab740b…3aa712`, both outputs Ironwood, memo intact |
 
 | A fee invoice is payable by Byte's own client | SPEC §5.5 | `payer.ts` pays every output and guards the total; `chain.rs` `send_to` builds one multi-recipient proposal | `fee-loop.test.ts` "is paid and served", "settles both outputs in one transaction", "charges the guard the payment plus the fee" |
 | Invoices can be priced in USD and settle in ZEC | README, SPEC §5.4 | `core/src/price.ts`; `issuer.ts` `issueUsd` | `server.test.ts` "USD-priced invoices"; `pricing.test.ts` |
@@ -116,7 +120,7 @@ These are real and are documented where a reader will meet them, not only here.
 
 | Gap | Where it is disclosed |
 |-----|----------------------|
-| Only x402 has been proven on a real chain; MCP, A2A/AP2 and LangChain are proven against the mock | ROADMAP "Next", TESTNET_RUNS |
+| Only x402 has been proven on a real chain; MCP, A2A/AP2 and LangChain are proven against the mock | ROADMAP "Next", CHAIN_RUNS |
 | The memory store loses replay protection on restart | `MemoryInvoiceStore` class doc, SECURITY §5.3, ROADMAP |
 | librustzcash has never tested Ironwood as a source pool, and Byte spends from it | TOOLCHAIN, SECURITY §5.5, ROADMAP |
 | Verification is not a consensus judgement | SPEC §7, SECURITY §5.4, ROADMAP |

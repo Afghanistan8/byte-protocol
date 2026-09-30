@@ -12,7 +12,7 @@ marked **Planned**, which here means *not implemented and not claimed*.
 | | |
 |---|---|
 | The `byte-zcash-shielded-v1` scheme | Normative spec, memo codec, ZIP-321, receipts |
-| Shielded Ironwood settlement | Proven on testnet — [TESTNET_RUNS.md](TESTNET_RUNS.md) |
+| Shielded Ironwood settlement | Proven on testnet — [CHAIN_RUNS.md](CHAIN_RUNS.md) |
 | `byte-walletd` | Diversified addresses, chain sync, send, view-only verification |
 | Invoice issuance and verification | Every failure in SPEC §8 tested |
 | The spend guard | Per-call cap, daily cap, allowlist, approval hook, audit log |
