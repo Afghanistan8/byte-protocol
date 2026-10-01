@@ -20,8 +20,9 @@ Hackathon-stage, built for the [ZECATHON](https://thezecathon.com/) in the Shiel
 track. It has not been audited, and I would not put money behind it that I minded losing.
 
 **It works on mainnet.** Not only on testnet, and not only between two halves of my own code.
-[docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md) logs five runs; these are the two that carry the most
-weight, both on **Zcash mainnet** and verifiable on any explorer:
+[docs/CHAIN_RUNS.md](docs/CHAIN_RUNS.md) logs six runs, three of them on mainnet. These two
+carry the most weight, and both can be looked up on a public **Zcash mainnet** explorer such
+as `mainnet.zcashexplorer.app`:
 
 ```
 txid   a6eb7a4e2845d16ffeaae78a672334c66754e8e809bc2d2861e453826ca35a94
@@ -52,11 +53,17 @@ it: the mock chain has no compact blocks, so its memos are simply present.
 That is the argument for real runs over a green suite, and it is why the limitations in this
 README are written as plainly as the claims.
 
-**<!--stats:total-->876<!--/stats--> tests pass**: <!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->76<!--/stats--> Rust. They run on
-every push, on a clean checkout of a machine that is not mine, along with the build, a check
-that every package actually loads as published, the end-to-end demo, clippy, rustfmt, and a
-check that the counts in this file still match the suite. No CI job can spend money: the
-chain runs are gated behind flags nothing here sets.
+**<!--stats:total-->876<!--/stats--> tests pass**: <!--stats:ts-->800<!--/stats--> TypeScript, <!--stats:rust-->76<!--/stats--> Rust. Those counts come from
+running both suites locally, and `pnpm stats` writes them into this file so they cannot drift
+from what the suites actually report.
+
+A CI workflow exists in `.github/workflows/ci.yml` and covers the build, a check that every
+package loads as published, the demo, clippy, rustfmt and the generated counts. Its push
+trigger is **commented out**: GitHub answered the first run with "your account is locked due
+to a billing issue", so a push could only produce a failure email that says nothing about the
+code. It runs on demand until that is resolved, and re-enabling it is two uncommented lines.
+No CI job can spend money either way: the chain runs are gated behind flags nothing there
+sets.
 
 ---
 
@@ -276,8 +283,7 @@ five minutes of risk.
 Requires Node 20+, pnpm, and — for the sidecar — Rust with a C++ linker.
 
 ```bash
-pnpm install
-pnpm test
+pnpm install && pnpm build && pnpm test
 ```
 
 That runs the whole suite against the mock wallet, including the full 402 loop over a real HTTP

@@ -427,8 +427,8 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
   <p>
     There is no wallet-connect standard for Zcash yet. A ZCG grant to build one was
     approved in August 2026, with milestones running into <strong>late 2027</strong>. What
-    works today, and what every shielded wallet already implements, is
-    <strong>ZIP&#8209;321</strong>: a payment URI carrying the address, the amount and the memo.
+    works today is <strong>ZIP&#8209;321</strong>: a payment URI carrying the address, the
+    amount and the memo.
   </p>
   <p>
     Byte emits one with every invoice. Open it and your wallet fills in the payment.
@@ -439,23 +439,32 @@ GET /report + PAYMENT-SIGNATURE          <span class="c">&#8594;</span> <span cl
     <a class="uri" id="zip321" href="#">&mdash;</a>
     <button class="copy" id="copy">Copy URI</button>
 
-    <p class="label" style="margin-top:22px">Wallets supporting shielded ZEC and ZIP-321</p>
+    <p class="label" style="margin-top:22px">Wallets with Ironwood support in a release note</p>
     <div class="wallets">
       <span>Noir</span>
-      <span>MetaMask snap</span>
       <span>Zodl</span>
-      <span>YWallet</span>
       <span>Zingo</span>
-      <span>Zecwallet</span>
-      <span>Ledger</span>
-      <span>Brave</span>
-      <span class="partial">Nighthawk &middot; partial</span>
-      <span class="partial">Zelcore &middot; partial</span>
+      <span>Zkool</span>
+      <span>Keystone</span>
     </div>
+
+    <p class="label" style="margin-top:20px">Unverified since NU6.3</p>
+    <div class="wallets">
+      <span class="partial">MetaMask snap &middot; unverified since NU6.3</span>
+      <span class="partial">Ledger &middot; unverified since NU6.3</span>
+      <span class="partial">Brave &middot; unverified since NU6.3</span>
+      <span class="partial">Zucchini &middot; unverified since NU6.3</span>
+      <span class="partial">Nighthawk &middot; unverified since NU6.3</span>
+      <span class="partial">Zelcore &middot; unverified since NU6.3</span>
+    </div>
+
     <p style="margin-top:14px; font-size:13px; color: var(--ink-faint)">
-      Noir and the ChainSafe MetaMask snap can be connected directly from
-      <a href="app/" style="color:var(--crimson)">the app</a>. The rest can pay a Byte invoice
-      but cannot report back, because no standard lets them.
+      The first group each name Ironwood in a release note, with a version and a date;
+      <a href="app/" style="color:var(--crimson)">the app</a> lists which. <em>Unverified</em>
+      does not mean broken: it means no statement was found that could be checked, and Byte
+      will not let you send money on its optimism. Noir and the ChainSafe MetaMask snap can be
+      connected from the app; the rest pay a Byte invoice but cannot report back, because no
+      standard lets them.
     </p>
   </div>
 </section>

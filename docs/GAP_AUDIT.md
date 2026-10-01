@@ -4,8 +4,8 @@ What Byte Protocol has, measured against the F1–F12 feature checklist and the 
 independent review found in `main` at `9f5fc87`. A row says `Done` only when there is code
 **and** a passing test behind it, and the test is named. Anything else says what is missing.
 
-Last updated 29 September 2026, after the Part A repairs. Part B rows are still open and say
-so.
+Last updated 1 October 2026, after the mainnet runs in `CHAIN_RUNS.md`. Part B rows are still
+open and say so.
 
 ## How this was measured
 

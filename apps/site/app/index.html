@@ -284,9 +284,12 @@
           </p>
           <p class="muted">
             Split signing, where Byte builds a partially created transaction and a separate
-            signer completes it, is <strong>not built</strong>. It is the obvious next step
-            and the pieces exist, but nothing in Byte creates one today and this page will
-            not claim otherwise until it does.
+            signer completes it, is <strong>built and has run on mainnet</strong>: created,
+            reviewed, signed, proved and broadcast, logged as run 6 in
+            <span class="mono">CHAIN_RUNS.md</span>. Four of those five stages need no
+            spending key. One limit stands: <strong>the signing policy counts change</strong>,
+            so a cap covers value leaving the wallet plus value returning to it and cannot yet
+            serve as a spend limit.
           </p>
         </div>
       </div>
